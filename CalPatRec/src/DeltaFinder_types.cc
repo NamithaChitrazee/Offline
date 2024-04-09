@@ -45,12 +45,10 @@ namespace mu2e {
           FaceZ_t* fz = &fFaceData[is][face];
           fz->fHitData.clear() ;
           fz->fProtonHitData.clear() ;
-          for (int i=0; i<100; i++) {
-            fz->fFirst [i] = -1;
-            fz->fLast  [i] = -1;
-            fz->fPFirst[i] = -1;
-            fz->fPLast [i] = -1;
-          }
+          memset(fz->fFirst ,0xff,kMaxNTimeBins*sizeof(int));
+          memset(fz->fLast  ,0xff,kMaxNTimeBins*sizeof(int));
+          memset(fz->fPFirst,0xff,kMaxNTimeBins*sizeof(int));
+          memset(fz->fPLast ,0xff,kMaxNTimeBins*sizeof(int));
         }
       }
 //-----------------------------------------------------------------------------
@@ -281,11 +279,11 @@ namespace mu2e {
       x2 =  p2.x();
       y2 =  p2.y();
 
-      const XYZVectorF& wdir1 = Hd1->fHit->wdir();
+      XYZVectorF wdir1 = Hd1->fHit->uDir();
       nx1 = wdir1.x();
       ny1 = wdir1.y();
 
-      const XYZVectorF& wdir2 = Hd2->fHit->wdir();
+      XYZVectorF wdir2 = Hd2->fHit->uDir();
       nx2 = wdir2.x();
       ny2 = wdir2.y();
 
