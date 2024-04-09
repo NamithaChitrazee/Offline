@@ -6,8 +6,8 @@
 // T is supposed to have a constructor T(int N) , wher N is the element index in the list
 // a templated, light-weight, and "crippled" version of TClonesArray
 //-----------------------------------------------------------------------------
-#ifndef __CalPatRec_ManagedList_hh
-#define __CalPatRec_ManagedList_hh
+#ifndef __Mu2eUtilities_ManagedList_hh
+#define __Mu2eUtilities_ManagedList_hh
 
 namespace mu2e {
 
