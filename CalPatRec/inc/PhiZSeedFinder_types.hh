@@ -81,6 +81,7 @@ namespace mu2e {
 
       const ComboHitCollection*     chcol;
       const TimeClusterCollection*  tccol;
+      TimeClusterCollection*  _tccolnew;
 
       PhiZSeedFinderAlg*            _finder;
 

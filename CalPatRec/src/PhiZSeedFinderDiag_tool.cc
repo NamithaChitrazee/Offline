@@ -41,16 +41,31 @@ namespace mu2e {
 
     enum {
       kNEventHistSets  =  10,
+      kNPhiZSeedHistSets = 10
     };
+
 
     struct EventHist_t {
       TH1F*  fEventNumber;
       TH1F*  fRunNumber;
+      //For initial TimCluster
+      TH1F*  fnTimeClusters;
+      TH1F*  fnComboHits;
+      TH1F*  fnStrawHits;
+      //For new TimCluster
+      TH1F*  fnewTimeClusters;
+      TH1F*  fnewComboHits;
+      TH1F*  fnewStrawHits;
     };
 
+    struct PhiZSeedHist_t {
+      //TH1F*  fNHits;
+      TH1F*  fnSegments;
+    };
                                         // hits referred to here are the combo hits
     struct Hist_t {
-      EventHist_t*  fEvent [kNEventHistSets ];
+      EventHist_t*      fEvent     [kNEventHistSets ];
+      PhiZSeedHist_t*    fPhiZSeed [kNPhiZSeedHistSets ];
     };
 
   protected:
@@ -80,8 +95,11 @@ namespace mu2e {
 // other functions
 //-----------------------------------------------------------------------------
     void        bookEventHistograms (EventHist_t*  Hist, art::TFileDirectory* Dir);
+    void        bookPhiZSeedHistograms (PhiZSeedHist_t*  Hist, art::TFileDirectory* Dir);
 
     void        fillEventHistograms (EventHist_t*  Hist);
+    void        fillPhiZSeedHistograms (PhiZSeedHist_t*  Hist);
+
 //-----------------------------------------------------------------------------
 // overriden virtual functions of the base class
 //-----------------------------------------------------------------------------
@@ -115,6 +133,19 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
   void PhiZSeedFinderDiag::bookEventHistograms(EventHist_t* Hist, art::TFileDirectory* Dir) {
     Hist->fEventNumber     = Dir->make<TH1F>("event" , "Event Number", 100, 0., 100000.);
+    //For initial TimCluster
+    Hist->fnTimeClusters    = Dir->make<TH1F>("ntc"  ,  "Number of time clusters", 10, 0, 10);
+    Hist->fnComboHits        = Dir->make<TH1F>("nch"  ,  "Number of ComboHits", 100, 0, 100);
+    Hist->fnStrawHits        = Dir->make<TH1F>("nstw" ,  "Number of StrawHits", 100, 0, 100);
+    //For new TimCluster
+    Hist->fnewTimeClusters    = Dir->make<TH1F>("new_ntc"  ,  "Number of time clusters", 10, 0, 10);
+    Hist->fnewComboHits        = Dir->make<TH1F>("new_nch"  ,  "Number of ComboHits", 100, 0, 100);
+    Hist->fnewStrawHits        = Dir->make<TH1F>("new_nstw" ,  "Number of StrawHits", 100, 0, 100);
+  }
+
+//-----------------------------------------------------------------------------
+  void PhiZSeedFinderDiag::bookPhiZSeedHistograms(PhiZSeedHist_t* Hist, art::TFileDirectory* Dir) {
+    Hist->fnSegments    = Dir->make<TH1F>("nSegments" , "Number of segments", 10, 0, 10);
   }
 
 //-----------------------------------------------------------------------------
@@ -144,6 +175,23 @@ namespace mu2e {
       }
     }
 //-----------------------------------------------------------------------------
+// book PhiZSeed histograms
+//-----------------------------------------------------------------------------
+    int book_PhiZSeed_histset[kNPhiZSeedHistSets];
+    for (int i=0; i<kNPhiZSeedHistSets; i++) book_PhiZSeed_histset[i] = 0;
+
+    book_PhiZSeed_histset[ 0] = 1;                // all events
+
+    for (int i=0; i<kNPhiZSeedHistSets; i++) {
+      if (book_PhiZSeed_histset[i] != 0) {
+        sprintf(folder_name,"evt_%i",i);
+        art::TFileDirectory dir = Tfs->mkdir(folder_name);
+
+        _hist.fPhiZSeed[i] = new PhiZSeedHist_t;
+        bookPhiZSeedHistograms(_hist.fPhiZSeed[i],&dir);
+      }
+    }
+//-----------------------------------------------------------------------------
 // done
 //-----------------------------------------------------------------------------
     return 0;
@@ -153,8 +201,25 @@ namespace mu2e {
   void  PhiZSeedFinderDiag::fillEventHistograms(EventHist_t* Hist) {
 
     int event_number = _data->event->event();
-
     Hist->fEventNumber->Fill(event_number);
+    //For initial TimCluster
+    Hist->fnTimeClusters->Fill((int)_data->tccol->size());
+    for(int i=0; i<(int)_data->tccol->size(); i++){
+        Hist->fnComboHits->Fill((int)_data->tccol->at(i).nhits());
+        Hist->fnStrawHits->Fill((int)_data->tccol->at(i).nStrawHits());
+    }
+    //For new TimCluster
+    Hist->fnewTimeClusters->Fill((int)_data->_tccolnew->size());
+    for(int i=0; i<(int)_data->_tccolnew->size(); i++){
+      Hist->fnewComboHits->Fill((int)_data->_tccolnew->at(i).nhits());
+      Hist->fnewStrawHits->Fill((int)_data->_tccolnew->at(i)._nsh);
+    }
+
+  }
+
+//-----------------------------------------------------------------------------
+  void  PhiZSeedFinderDiag::fillPhiZSeedHistograms(PhiZSeedHist_t* Hist) {
+
   }
 
 //-----------------------------------------------------------------------------
@@ -162,10 +227,15 @@ namespace mu2e {
 // 'Mode' not used
 //-----------------------------------------------------------------------------
   int PhiZSeedFinderDiag::fillHistograms(void* Data, int Mode) {
+    _data = (Data_t*) Data;
 //-----------------------------------------------------------------------------
 // event histograms - just one set
 //-----------------------------------------------------------------------------
     fillEventHistograms(_hist.fEvent[0]);
+//-----------------------------------------------------------------------------
+// fill PhiZSeed histograms
+//-----------------------------------------------------------------------------
+    fillPhiZSeedHistograms(_hist.fPhiZSeed[0]);
 //-----------------------------------------------------------------------------
 // done
 //-----------------------------------------------------------------------------

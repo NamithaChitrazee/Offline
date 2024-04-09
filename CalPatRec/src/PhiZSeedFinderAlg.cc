@@ -43,7 +43,7 @@ namespace mu2e {
       const StrawHitIndex& ind = Tc->hits().at(i);
       _data->_v[i] = &(*_data->chcol)[ind];
     }
-
+    std::cout<<"nComboHits = "<<_data->_nComboHits<<std::endl;
     std::sort(_data->_v.begin(), _data->_v.end(),
               [](const ComboHit*& a, const ComboHit*& b) { return a->time() < b->time(); });
 //-----------------------------------------------------------------------------
