@@ -30,6 +30,7 @@ namespace mu2e {
     void Data_t::InitEvent(const art::Event* Evt, int DebugLevel) {
       event      = Evt;
       debugLevel = DebugLevel;
+      std::cout<<"kNStations = "<<kNStations<<std::endl;
 
       for (int is=0; is<kNStations; is++) {
 //-----------------------------------------------------------------------------

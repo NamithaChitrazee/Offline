@@ -21,6 +21,8 @@ namespace fhicl {
 #include "Offline/RecoDataProducts/inc/TimeCluster.hh"
 #include "Offline/TrackerGeom/inc/Straw.hh"
 #include "Offline/TrackerGeom/inc/Tracker.hh"
+#include "Offline/RecoDataProducts/inc/HelixHit.hh"
+#include "Offline/RecoDataProducts/inc/HelixSeed.hh"
 #include "Offline/CalorimeterGeom/inc/DiskCalorimeter.hh"
 
 #include "Offline/Mu2eUtilities/inc/McUtilsToolBase.hh"
@@ -81,7 +83,6 @@ namespace mu2e {
 
       const ComboHitCollection*     chcol;
       const TimeClusterCollection*  tccol;
-      TimeClusterCollection*  _tccolnew;
 
       PhiZSeedFinderAlg*            _finder;
 
@@ -110,7 +111,19 @@ namespace mu2e {
       void     InitEvent(const art::Event* Evt, int DebugLevel);
       void     InitGeometry();
 
+//-----------------------------------------------------------------------------
+// diagInfo for PhiZSeedFinder
+//-----------------------------------------------------------------------------
+      TimeClusterCollection*  _tccolnew;
+      int nTimeClusters;
+      int nComboHits;
+      int nStrawHits;
+//-----------------------------------------------------------------------------
+// diagInfo for HelixFinder
+//-----------------------------------------------------------------------------
+      HelixSeedCollection* _hscolnew;
     };
-  }
-}
+
+  }// namespace PhiZSeedFinderTypes
+}// namespace mu2e
 #endif

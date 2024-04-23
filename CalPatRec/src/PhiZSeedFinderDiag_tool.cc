@@ -21,12 +21,51 @@
 #include "Offline/CalPatRec/inc/HlPrint.hh"
 #include "Offline/CalPatRec/inc/PhiZSeedFinderAlg.hh"
 #include "Offline/CalPatRec/inc/McPart_t.hh"
+#include "Offline/RecoDataProducts/inc/HelixSeed.hh"
 
 #include "Offline/Mu2eUtilities/inc/ModuleHistToolBase.hh"
 #include "Offline/Mu2eUtilities/inc/McUtilsToolBase.hh"
 #include "Offline/DataProducts/inc/PDGCode.hh"
 
 #include "Offline/MCDataProducts/inc/ProtonBunchIntensity.hh"
+
+
+
+
+
+
+
+
+#include "Offline/ConfigTools/inc/ConfigFileLookupPolicy.hh"
+#include "art/Framework/Core/EDProducer.h"
+#include "art/Framework/Principal/Event.h"
+#include "art/Framework/Principal/Handle.h"
+#include "fhiclcpp/ParameterSet.h"
+
+#include "Offline/BFieldGeom/inc/BFieldManager.hh"
+#include "Offline/CalorimeterGeom/inc/Calorimeter.hh"
+#include "Offline/GeometryService/inc/DetectorSystem.hh"
+#include "Offline/GeometryService/inc/GeomHandle.hh"
+#include "Offline/TrackerGeom/inc/Tracker.hh"
+
+#include "Offline/RecoDataProducts/inc/CaloCluster.hh"
+#include "Offline/RecoDataProducts/inc/ComboHit.hh"
+#include "Offline/RecoDataProducts/inc/HelixHit.hh"
+#include "Offline/RecoDataProducts/inc/HelixSeed.hh"
+#include "Offline/RecoDataProducts/inc/StrawHitIndex.hh"
+#include "Offline/RecoDataProducts/inc/TimeCluster.hh"
+
+#include "Offline/Mu2eUtilities/inc/LsqSums2.hh"
+#include "Offline/Mu2eUtilities/inc/LsqSums4.hh"
+#include "Offline/Mu2eUtilities/inc/polyAtan2.hh"
+
+#include "Offline/DataProducts/inc/PDGCode.hh"
+#include "Offline/GlobalConstantsService/inc/GlobalConstantsHandle.hh"
+#include "Offline/GlobalConstantsService/inc/ParticleDataList.hh"
+#include "Offline/MCDataProducts/inc/SimParticle.hh"
+#include "Offline/Mu2eUtilities/inc/McUtilsToolBase.hh"
+#include "Offline/Mu2eUtilities/inc/ModuleHistToolBase.hh"
+
 
 using namespace std;
 
@@ -41,31 +80,37 @@ namespace mu2e {
 
     enum {
       kNEventHistSets  =  10,
-      kNPhiZSeedHistSets = 10
+      kNPhiZSeedHistSets = 10,
+      kNHelixHistSets = 10
     };
 
 
     struct EventHist_t {
       TH1F*  fEventNumber;
       TH1F*  fRunNumber;
-      //For initial TimCluster
       TH1F*  fnTimeClusters;
-      TH1F*  fnComboHits;
-      TH1F*  fnStrawHits;
-      //For new TimCluster
-      TH1F*  fnewTimeClusters;
-      TH1F*  fnewComboHits;
-      TH1F*  fnewStrawHits;
+      TH1F*  fnComboHitsPerTC;
+      TH1F*  fnStrawHitsPerTC;
     };
 
     struct PhiZSeedHist_t {
-      //TH1F*  fNHits;
-      TH1F*  fnSegments;
+      TH1F*  fnewTimeClusters;
+      TH1F*  fnewComboHitsPerTC;
+      TH1F*  fnewStrawHitsPerTC;
     };
                                         // hits referred to here are the combo hits
+    struct HelixHist_t {
+      TH1F*  fHelixradius;
+      TH1F*  fHelixrcent;
+      TH1F*  fHelixfcent;
+      TH1F*  fHelixlambda;
+      TH1F*  fHelixfz0;
+    };
+
     struct Hist_t {
       EventHist_t*      fEvent     [kNEventHistSets ];
-      PhiZSeedHist_t*    fPhiZSeed [kNPhiZSeedHistSets ];
+      PhiZSeedHist_t*   fPhiZSeed [kNPhiZSeedHistSets ];
+      HelixHist_t*      fHelix [kNHelixHistSets ];
     };
 
   protected:
@@ -96,9 +141,11 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
     void        bookEventHistograms (EventHist_t*  Hist, art::TFileDirectory* Dir);
     void        bookPhiZSeedHistograms (PhiZSeedHist_t*  Hist, art::TFileDirectory* Dir);
+    void        bookHelixHistograms (HelixHist_t*  Hist, art::TFileDirectory* Dir);
 
     void        fillEventHistograms (EventHist_t*  Hist);
     void        fillPhiZSeedHistograms (PhiZSeedHist_t*  Hist);
+    void        fillHelixHistograms (HelixHist_t*  Hist);
 
 //-----------------------------------------------------------------------------
 // overriden virtual functions of the base class
@@ -132,20 +179,26 @@ namespace mu2e {
 
 //-----------------------------------------------------------------------------
   void PhiZSeedFinderDiag::bookEventHistograms(EventHist_t* Hist, art::TFileDirectory* Dir) {
-    Hist->fEventNumber     = Dir->make<TH1F>("event" , "Event Number", 100, 0., 100000.);
-    //For initial TimCluster
+    Hist->fEventNumber      = Dir->make<TH1F>("event" , "Event Number", 100, 0., 100000.);
     Hist->fnTimeClusters    = Dir->make<TH1F>("ntc"  ,  "Number of time clusters", 10, 0, 10);
-    Hist->fnComboHits        = Dir->make<TH1F>("nch"  ,  "Number of ComboHits", 100, 0, 100);
-    Hist->fnStrawHits        = Dir->make<TH1F>("nstw" ,  "Number of StrawHits", 100, 0, 100);
-    //For new TimCluster
-    Hist->fnewTimeClusters    = Dir->make<TH1F>("new_ntc"  ,  "Number of time clusters", 10, 0, 10);
-    Hist->fnewComboHits        = Dir->make<TH1F>("new_nch"  ,  "Number of ComboHits", 100, 0, 100);
-    Hist->fnewStrawHits        = Dir->make<TH1F>("new_nstw" ,  "Number of StrawHits", 100, 0, 100);
+    Hist->fnComboHitsPerTC  = Dir->make<TH1F>("nch"  ,  "Number of ComboHits", 100, 0, 100);
+    Hist->fnStrawHitsPerTC        = Dir->make<TH1F>("nstw" ,  "Number of StrawHits", 100, 0, 100);
   }
 
 //-----------------------------------------------------------------------------
   void PhiZSeedFinderDiag::bookPhiZSeedHistograms(PhiZSeedHist_t* Hist, art::TFileDirectory* Dir) {
-    Hist->fnSegments    = Dir->make<TH1F>("nSegments" , "Number of segments", 10, 0, 10);
+    Hist->fnewTimeClusters     = Dir->make<TH1F>("new_ntc"  ,  "Number of time clusters", 10, 0, 10);
+    Hist->fnewComboHitsPerTC  = Dir->make<TH1F>("new_nch"  ,  "Number of ComboHits", 100, 0, 100);
+    Hist->fnewStrawHitsPerTC  = Dir->make<TH1F>("new_nstw" ,  "Number of StrawHits", 100, 0, 100);
+  }
+
+//-----------------------------------------------------------------------------
+  void PhiZSeedFinderDiag::bookHelixHistograms(HelixHist_t* Hist, art::TFileDirectory* Dir) {
+    Hist->fHelixradius     = Dir->make<TH1F>("Helixradius"  ,  "Helix radius", 10, 0, 10);
+    Hist->fHelixrcent      = Dir->make<TH1F>("Helixrcent"  ,  "Helix rcent", 10, 0, 10);
+    Hist->fHelixfcent      = Dir->make<TH1F>("Helixfcent"  ,  "Helix fcent", 10, 0, 10);
+    Hist->fHelixlambda     = Dir->make<TH1F>("Helixlambda"  ,  "Helix lambda", 10, 0, 10);
+    Hist->fHelixfz0        = Dir->make<TH1F>("Helixfz0"  ,  "Helix fz0", 10, 0, 10);
   }
 
 //-----------------------------------------------------------------------------
@@ -192,6 +245,23 @@ namespace mu2e {
       }
     }
 //-----------------------------------------------------------------------------
+// book Helix histograms
+//-----------------------------------------------------------------------------
+    int book_Helix_histset[kNHelixHistSets];
+    for (int i=0; i<kNHelixHistSets; i++) book_Helix_histset[i] = 0;
+
+    book_Helix_histset[ 0] = 1;                // all events
+
+    for (int i=0; i<kNHelixHistSets; i++) {
+      if (book_Helix_histset[i] != 0) {
+        sprintf(folder_name,"evt_%i",i);
+        art::TFileDirectory dir = Tfs->mkdir(folder_name);
+
+        _hist.fHelix[i] = new HelixHist_t;
+        bookHelixHistograms(_hist.fHelix[i],&dir);
+      }
+    }
+//-----------------------------------------------------------------------------
 // done
 //-----------------------------------------------------------------------------
     return 0;
@@ -200,26 +270,42 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
   void  PhiZSeedFinderDiag::fillEventHistograms(EventHist_t* Hist) {
 
-    int event_number = _data->event->event();
-    Hist->fEventNumber->Fill(event_number);
+    Hist->fEventNumber->Fill((int)_data->event->event());
     //For initial TimCluster
     Hist->fnTimeClusters->Fill((int)_data->tccol->size());
     for(int i=0; i<(int)_data->tccol->size(); i++){
-        Hist->fnComboHits->Fill((int)_data->tccol->at(i).nhits());
-        Hist->fnStrawHits->Fill((int)_data->tccol->at(i).nStrawHits());
+        Hist->fnComboHitsPerTC->Fill((int)_data->tccol->at(i).nhits());
+        Hist->fnStrawHitsPerTC->Fill((int)_data->tccol->at(i).nStrawHits());
     }
-    //For new TimCluster
-    Hist->fnewTimeClusters->Fill((int)_data->_tccolnew->size());
-    for(int i=0; i<(int)_data->_tccolnew->size(); i++){
-      Hist->fnewComboHits->Fill((int)_data->_tccolnew->at(i).nhits());
-      Hist->fnewStrawHits->Fill((int)_data->_tccolnew->at(i)._nsh);
-    }
-
   }
 
 //-----------------------------------------------------------------------------
   void  PhiZSeedFinderDiag::fillPhiZSeedHistograms(PhiZSeedHist_t* Hist) {
 
+    Hist->fnewTimeClusters->Fill((int)_data->_tccolnew->size());
+    for(int i=0; i<(int)_data->_tccolnew->size(); i++){
+      Hist->fnewComboHitsPerTC->Fill(_data->_tccolnew->at(i).nhits());
+      //Hist->fnewStrawHitsPerTC->Fill(_data->_tccolnew->at(i)._nsh);
+      Hist->fnewStrawHitsPerTC->Fill(_data->_tccolnew->at(i)._nsh);
+    }
+    //For initial TimCluster and new TimCluster
+    //for(int i=0; i<(int)_data->_tccolnew->size(); i++){
+    //  Hist->fnewStrawHitsPerTC->Fill((int)_data->_tccolnew->at(i)._nsh);
+   // }
+
+  }
+
+//-----------------------------------------------------------------------------
+  void  PhiZSeedFinderDiag::fillHelixHistograms(HelixHist_t* Hist) {
+
+    //For Helix
+    for(int i=0; i<(int)_data->_hscolnew->size(); i++){
+      Hist->fHelixradius->Fill(_data->_hscolnew->at(i).helix()._radius);
+      Hist->fHelixrcent->Fill(_data->_hscolnew->at(i).helix()._rcent);
+      Hist->fHelixfcent->Fill(_data->_hscolnew->at(i).helix()._fcent);
+      Hist->fHelixlambda->Fill(_data->_hscolnew->at(i).helix()._lambda);
+      Hist->fHelixfz0->Fill(_data->_hscolnew->at(i).helix()._fz0);
+    }
   }
 
 //-----------------------------------------------------------------------------
@@ -229,13 +315,17 @@ namespace mu2e {
   int PhiZSeedFinderDiag::fillHistograms(void* Data, int Mode) {
     _data = (Data_t*) Data;
 //-----------------------------------------------------------------------------
-// event histograms - just one set
+// fill event histograms
 //-----------------------------------------------------------------------------
     fillEventHistograms(_hist.fEvent[0]);
 //-----------------------------------------------------------------------------
 // fill PhiZSeed histograms
 //-----------------------------------------------------------------------------
     fillPhiZSeedHistograms(_hist.fPhiZSeed[0]);
+//-----------------------------------------------------------------------------
+// fill Helix histograms
+//-----------------------------------------------------------------------------
+    fillHelixHistograms(_hist.fHelix[0]);
 //-----------------------------------------------------------------------------
 // done
 //-----------------------------------------------------------------------------

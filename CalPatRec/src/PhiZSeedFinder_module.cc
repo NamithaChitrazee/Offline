@@ -40,12 +40,23 @@
 #include "Offline/RecoDataProducts/inc/StrawHitFlag.hh"
 #include "Offline/RecoDataProducts/inc/CaloCluster.hh"
 #include "Offline/RecoDataProducts/inc/TimeCluster.hh"
+#include "Offline/RecoDataProducts/inc/HelixHit.hh"
+#include "Offline/RecoDataProducts/inc/HelixSeed.hh"
 #include "Offline/RecoDataProducts/inc/IntensityInfoTimeCluster.hh"
+
+//For Helix Finder
+//#include "Offline/CalPatRec/inc/CalHelixFinderData.hh"
+
 
 // diagnostics
 #include "Offline/CalPatRec/inc/ChannelID.hh"
 #include "Offline/CalPatRec/inc/PhiZSeedFinder_types.hh"
 #include "Offline/CalPatRec/inc/PhiZSeedFinderAlg.hh"
+
+
+#include "Offline/Mu2eUtilities/inc/LsqSums2.hh"
+#include "Offline/Mu2eUtilities/inc/LsqSums4.hh"
+#include "Offline/Mu2eUtilities/inc/polyAtan2.hh"
 
 //ROOT
 #include "TH1F.h"
@@ -63,7 +74,7 @@
 #include <TPaveText.h>
 #include <TSystem.h>
 #include "TLatex.h"
-#include <TF1.h>
+//#include <TF1.h>
 #include <TStyle.h>
 
 // C++
@@ -129,6 +140,18 @@ namespace mu2e {
           bool usedforfit;
       };
 
+      struct tripletPoint {
+        const XYZVectorF* pos;
+        int hitIndice;
+      };
+
+      struct triplet {
+        tripletPoint i;
+        tripletPoint j;
+        tripletPoint k;
+      };
+
+
   protected:
 //-----------------------------------------------------------------------------
 // talk-to parameters: input collections and algorithm parameters
@@ -152,7 +175,9 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
 // cache event/geometry objects
 //-----------------------------------------------------------------------------
-    const ComboHitCollection*     _sschColl ;
+    //TimeClusterCollection* tccol1;
+    const ComboHitCollection*     _sschColl;
+    HelixSeedCollection* _hsColl;
 
     const Tracker*               _tracker;
     const DiskCalorimeter*       _calorimeter;
@@ -161,6 +186,8 @@ namespace mu2e {
     int                           _testOrderPrinted;
 
     PhiZSeedFinderAlg*           _finder;
+
+    ::LsqSums4 _circleFitter;
 //-----------------------------------------------------------------------------
 // functions
 //-----------------------------------------------------------------------------
@@ -179,7 +206,7 @@ namespace mu2e {
     void         produce (art::Event& E ) override;
 
 //-----------------------------------------------------------------------------
-// PhiZSeedFinder unique functions (by h.kitagawa)
+// PhiZSeedFinder functions
 //-----------------------------------------------------------------------------
     void ev5_FillHitsInTimeCluster(const TimeCluster* Tc, std::vector<ev5_HitsInNthStation>& ComboHitsInCluster);
     void ev5_SegmentSearchInTriplet(const std::vector<ev5_HitsInNthStation> HitsInTimeCluster, std::vector<std::vector<ev5_HitsInNthStation>>& best_triplet_segments, std::vector<std::vector<ev5_Segment>>& diag_best_triplet_segments, double thre_residual);
@@ -197,6 +224,14 @@ namespace mu2e {
     void ev5_select_best_segments_step_07(std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag, double threshold_deltaphi, int& NumberOfSegments);
 
 //-----------------------------------------------------------------------------
+// Find Helix functions
+//-----------------------------------------------------------------------------
+    //void findHelix(int tc, HelixSeedCollection& HSColl);
+    void findHelix(const std::vector<std::vector<ev5_HitsInNthStation>>& best_triplet_segments, HelixSeedCollection& HSColl);
+    void initTriplet(triplet& trip, int& outcome);
+    void initSeedCircle(int& outcome);
+
+//-----------------------------------------------------------------------------
 // function
 //-----------------------------------------------------------------------------
     void initTimeCluster(TimeCluster& tc);
@@ -209,17 +244,18 @@ namespace mu2e {
     _sschCollTag           (config().sschCollTag()       ),
     _chCollTag             (config().chCollTag()         ),
     _tcCollTag             (config().tcCollTag()         ),
-    _debugLevel             (config().debugLevel()         ),
+    _debugLevel            (config().debugLevel()        ),
     _diagLevel             (config().diagLevel()         ),
     _printErrors           (config().printErrors()       ),
     _testOrder             (config().testOrder()         ),
-    _bkgHitMask             (config().bkgHitMask()         )
+    _bkgHitMask            (config().bkgHitMask()        )
   {
 
     consumes<TimeClusterCollection>(_tcCollTag);
     consumes<ComboHitCollection>   (_chCollTag);
 
     produces<TimeClusterCollection>();
+    produces<HelixSeedCollection>();
 
     _finder = new PhiZSeedFinderAlg(config().finderParameters,&_data);
 
@@ -837,97 +873,24 @@ namespace mu2e {
       }
       if(go != 1) continue;
 
-      //Plot graph: Phi vs. Z of each segment
-      TGraph *graph = new TGraph();
-      int p = 0;
-      int nthStation = 0;
-      double z_max = diag_segment_candidates.at(i).at(0).z;
-      double z_min = diag_segment_candidates.at(i).at(0).z;
-      double m = diag_segment_candidates.at(i).at(0).alpha;
-      int nComboHitsSegment = (int)diag_segment_candidates.at(i).size();
-      for(int j=0; j<nComboHitsSegment; j++){
-        // z as x-axis and phi as y-axis
-        double z = diag_segment_candidates.at(i).at(j).z;
-        double phi = diag_segment_candidates.at(i).at(j).deltaphi;
-        graph->SetPoint(p++, z, phi);
 
-        if(z_min > z) z_min = z;
-        if(z_max < z) z_max = z;
-        if(nthStation < diag_segment_candidates.at(i).at(j).station) nthStation = diag_segment_candidates.at(i).at(j).station;
-      }
+      double slope_alpha = 0.0;//Slope (a)
+      double slope_beta = 0.0;//Intercept (b)
+      double ChiNDF = 0.0;
+      ev5_fit_slope(diag_segment_candidates.at(i), slope_alpha, slope_beta, ChiNDF);
 
-      //Fitting function: f(x) = a*x + b
-      TF1* fitFunc = new TF1("linearFit", "[0]*x + [1]", graph->GetXaxis()->GetXmin(), graph->GetXaxis()->GetXmax());
-      fitFunc->SetParameter(0, m);
-      fitFunc->SetParameter(1, 0.0);
-      fitFunc->SetLineColor(kBlue);
-      fitFunc->SetLineStyle(2);
-      graph->Fit(fitFunc, "R");
-
-      //Print fitting result
-      //std::cout << "   Slope (a): " << fitFunc->GetParameter(0) << " +/- " << fitFunc->GetParError(0) << std::endl;
-      //std::cout << "   Intercept (b): " << fitFunc->GetParameter(1) << " +/- " << fitFunc->GetParError(1) << std::endl;
-      //std::cout << "   Chi-square: " << fitFunc->GetChisquare() << std::endl;
-      //std::cout << "   NDF: " << fitFunc->GetNDF() << std::endl;
-
-
-
-      TCanvas *canvas = new TCanvas("canvas", "My TGraph", 800, 600);
-      canvas->SetMargin(0.1, 0.1, 0.1, 0.1);
-      graph->SetMarkerColor(kRed);
-      graph->SetMarkerStyle(20);
-      graph->SetMarkerSize(0.5);
-      graph->Draw("AP");
-      graph->GetXaxis()->SetTitle("Z [mm]");
-      graph->GetYaxis()->SetTitle("#Delta #Phi [rad]");
-      // Add title at the top
-      TPaveText *title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
-      title->SetFillColor(0);
-      title->SetTextAlign(22);
-      title->Draw("same");
-      // Set the range
-      graph->GetXaxis()->SetLimits(z_min-200, z_max+200);
-      graph->GetYaxis()->SetRangeUser(-2.0, 2.0);
-
-      // Draw dphi/dX in text
-      TLatex dphidx;
-      dphidx.SetTextSize(0.03);
-      dphidx.SetTextAlign(13);
-      int ntot = nCH;
-      dphidx.DrawLatexNDC(0.15, 0.88, Form("Station (%d - %d - %d), CHs = %d", nthStation-2, nthStation-1, nthStation, ntot));
-      dphidx.DrawLatexNDC(0.15, 0.85, Form("#frac{d#phi}{dZ} = %f, fitted with 2 CHs #candidate %d", m, i));
-      dphidx.DrawLatexNDC(0.15, 0.78, Form("CHs in Segment = %d", (int)diag_segment_candidates.at(i).size()));
-      dphidx.DrawLatexNDC(0.15, 0.73, Form("#Delta #phi = %.1f", threshold_deltaphi));
-      dphidx.DrawLatexNDC(0.15, 0.70, "Fit Results: ");
-      dphidx.DrawLatexNDC(0.15, 0.67, Form("Slope (a): %f +/- %f", fitFunc->GetParameter(0), fitFunc->GetParError(0)));
-      dphidx.DrawLatexNDC(0.15, 0.64, Form("Intercept (b): %f +/- %f", fitFunc->GetParameter(1), fitFunc->GetParError(1)));
-      dphidx.DrawLatexNDC(0.15, 0.61, Form("Chi-square: %f", fitFunc->GetChisquare()));
-      dphidx.DrawLatexNDC(0.15, 0.58, Form("NDF: %d", fitFunc->GetNDF()));
-
-      //select best candidate
-      //std::cout<<"(fitFunc->GetChisquare()/fitFunc->GetNDF())*100.0 = "<<(fitFunc->GetChisquare()/fitFunc->GetNDF())*100.0<<std::endl;
-      double chiNDF = fitFunc->GetChisquare()/fitFunc->GetNDF();
 
       //push back segment
       ThisIsBestSegment.push_back(segment_candidates.at(i));
       ThisIsBestSegment_Diag.push_back(diag_segment_candidates.at(i));
       int index = (int)ThisIsBestSegment_Diag.size()-1;
       for(int j=0; j<(int)ThisIsBestSegment_Diag.at(index).size(); j++){
-        ThisIsBestSegment_Diag.at(index).at(j).alpha = fitFunc->GetParameter(0);
-        ThisIsBestSegment_Diag.at(index).at(j).beta = fitFunc->GetParameter(1);
-        ThisIsBestSegment_Diag.at(index).at(j).chiNDF = chiNDF*100.0;
+        ThisIsBestSegment_Diag.at(index).at(j).alpha = slope_alpha;
+        ThisIsBestSegment_Diag.at(index).at(j).beta = slope_beta;
+        ThisIsBestSegment_Diag.at(index).at(j).chiNDF = ChiNDF;
       }
 
-
-      //delete
-      delete canvas;
-      delete graph;
-      delete title;
-      //Plot end
-
     }//end nSegmentInTriplet
-
-
 
   }//end ev5_select_best_segments_step_01
 
@@ -1310,7 +1273,7 @@ namespace mu2e {
   }//end ev5_select_best_segments_step_03
 
 //--------------------------------------------------------------------------------//
-    void PhiZSeedFinder::ev5_fit_slope(const std::vector<ev5_Segment>& hit_diag, double& alpha, double& beta, double& chindf){
+/*    void PhiZSeedFinder::ev5_fit_slope(const std::vector<ev5_Segment>& hit_diag, double& alpha, double& beta, double& chindf){
 
       //Plot graph: Phi vs. Z of each segment
       TGraph *graph = new TGraph();
@@ -1340,12 +1303,11 @@ namespace mu2e {
       graph->Fit(fitFunc, "R");
 
       //Print fitting result
-      /*std::cout << "Fit Results:" << std::endl;
-      std::cout << "Slope (a): " << fitFunc->GetParameter(0) << " +/- " << fitFunc->GetParError(0) << std::endl;
-      std::cout << "Intercept (b): " << fitFunc->GetParameter(1) << " +/- " << fitFunc->GetParError(1) << std::endl;
-      std::cout << "Chi-square *100.: " << fitFunc->GetChisquare()*100.0 << std::endl;
-      std::cout << "NDF: " << fitFunc->GetNDF() << std::endl;
-      */
+      //std::cout << "Fit Results:" << std::endl;
+      //std::cout << "Slope (a): " << fitFunc->GetParameter(0) << " +/- " << fitFunc->GetParError(0) << std::endl;
+      //std::cout << "Intercept (b): " << fitFunc->GetParameter(1) << " +/- " << fitFunc->GetParError(1) << std::endl;
+      //std::cout << "Chi-square *100.: " << fitFunc->GetChisquare()*100.0 << std::endl;
+      //std::cout << "NDF: " << fitFunc->GetNDF() << std::endl;
 
 
       TCanvas *canvas = new TCanvas("canvas", "My TGraph", 800, 600);
@@ -1402,7 +1364,29 @@ namespace mu2e {
       beta = fitFunc->GetParameter(1);
       chindf = ChiNDF;
   }
+*/
+//--------------------------------------------------------------------------------//
+    void PhiZSeedFinder::ev5_fit_slope(const std::vector<ev5_Segment>& hit_diag, double& alpha, double& beta, double& chindf){
 
+      int nComboHitsSegment = (int)hit_diag.size();
+      ::LsqSums2 fitter;
+      fitter.clear();
+      for(int j=0; j<nComboHitsSegment; j++){
+        // z as x-axis and phi as y-axis
+        double z = hit_diag.at(j).z;
+        double phi = hit_diag.at(j).deltaphi;
+        double seedError2 = 0.1;
+        double seedWeight = 1.0 / (seedError2);
+        fitter.addPoint(z, phi, seedWeight);
+
+      }
+
+      //return fitting values
+      double dphidz = fitter.dydx();
+      alpha = dphidz;
+      beta = fitter.y0();
+      chindf = fitter.chi2Dof();
+  }
 //--------------------------------------------------------------------------------//
   void PhiZSeedFinder::ev5_select_best_segments_step_04(const std::vector<ev5_HitsInNthStation>& HitsInTimeCluster, std::vector<std::vector<ev5_HitsInNthStation>>& ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& ThisIsBestSegment_Diag, int nCH, double threshold_deltaphi){
 
@@ -1790,107 +1774,6 @@ namespace mu2e {
 
     //std::cout<<"ThisIsBestSegment size = "<<all_ThisIsBestSegment.size()<<std::endl;
 
-
-
-    //---------------------------------------------------------------------------------------------------------
-    // Fit segments
-    //---------------------------------------------------------------------------------------------------------
-    //select the best candidate
-    for(int i=0; i<(int)all_ThisIsBestSegment.size(); i++){
-
-      //Plot graph: Phi vs. Z of each segment
-      TGraph *graph = new TGraph();
-      int p = 0;
-      int nthStation = 999;
-      double z_max = all_ThisIsBestSegment_Diag.at(i).at(0).z;
-      double z_min = all_ThisIsBestSegment_Diag.at(i).at(0).z;
-      double m = all_ThisIsBestSegment_Diag.at(i).at(0).alpha;
-      int nComboHitsSegment = (int)all_ThisIsBestSegment_Diag.at(i).size();
-      for(int j=0; j<nComboHitsSegment; j++){
-        // z as x-axis and phi as y-axis
-        double z = all_ThisIsBestSegment_Diag.at(i).at(j).z;
-        double phi = all_ThisIsBestSegment_Diag.at(i).at(j).deltaphi;
-        graph->SetPoint(p++, z, phi);
-
-        if(z_min > z) z_min = z;
-        if(z_max < z) z_max = z;
-        if(nthStation > all_ThisIsBestSegment_Diag.at(i).at(j).station) nthStation = all_ThisIsBestSegment_Diag.at(i).at(j).station;
-      }
-
-      //Fitting function: f(x) = a*x + b
-      TF1* fitFunc = new TF1("linearFit", "[0]*x + [1]", graph->GetXaxis()->GetXmin(), graph->GetXaxis()->GetXmax());
-      fitFunc->SetParameter(0, m);
-      fitFunc->SetParameter(1, 0.0);
-      fitFunc->SetLineColor(kBlue);
-      fitFunc->SetLineStyle(2);
-      graph->Fit(fitFunc, "R");
-
-      //Print fitting result
-      //std::cout << "Fit Results:" << std::endl;
-      //std::cout << "   Slope (a): " << fitFunc->GetParameter(0) << " +/- " << fitFunc->GetParError(0) << std::endl;
-      //std::cout << "   Intercept (b): " << fitFunc->GetParameter(1) << " +/- " << fitFunc->GetParError(1) << std::endl;
-      //std::cout << "   Chi-square: " << fitFunc->GetChisquare() << std::endl;
-      //std::cout << "   NDF: " << fitFunc->GetNDF() << std::endl;
-
-
-
-      TCanvas *canvas = new TCanvas("canvas", "My TGraph", 800, 600);
-      canvas->SetMargin(0.1, 0.1, 0.1, 0.1);
-      graph->SetMarkerColor(kRed);
-      graph->SetMarkerStyle(20);
-      graph->SetMarkerSize(0.5);
-      graph->Draw("AP");
-      graph->GetXaxis()->SetTitle("Z [mm]");
-      graph->GetYaxis()->SetTitle("#Delta #Phi [rad]");
-      // Add title at the top
-      TPaveText *title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
-      //int run = eventId.run();
-      //int subrun = eventId.subRun();
-      //std::stringstream eventStringStream;
-      //eventStringStream << "run: " << run << " subRun: " << subrun << " event: " << eventNumber;
-      //title->AddText(Form("Z vs. Phi (Event, TC, ST-1st-2nd-3rd, #candidate) = (%d, %d, %d-%d-%d, %d) (CE only)", eventNumber, TC, nthStation-2, nthStation-1, nthStation, i));
-      title->SetFillColor(0);
-      title->SetTextAlign(22);
-      title->Draw("same");
-      // Set the range
-      graph->GetXaxis()->SetLimits(z_min-200, z_max+200);
-      graph->GetYaxis()->SetRangeUser(-2.0, 2.0);
-
-      // Draw dashed line y = 0
-      //TLine *zeroLine = new TLine(z[0]-200, 0, z[2]+200, 0);
-      //zeroLine->SetLineColor(kBlack);
-      //zeroLine->SetLineStyle(2);
-      //zeroLine->SetLineWidth(2);
-      //zeroLine->Draw("same");
-
-      // Draw dphi/dX in text
-      TLatex dphidx;
-      dphidx.SetTextSize(0.03);
-      dphidx.SetTextAlign(13);
-      dphidx.DrawLatexNDC(0.15, 0.88, Form("Station (%d - %d - %d)", nthStation, nthStation+1, nthStation+2));
-      //dphidx.DrawLatexNDC(0.15, 0.85, Form("#frac{d#phi}{dZ} = %f, fitted with 2 CHs #candidate %d", m, i));
-      dphidx.DrawLatexNDC(0.15, 0.78, Form("CHs in Segment = %d", (int)all_ThisIsBestSegment_Diag.at(i).size()));
-      dphidx.DrawLatexNDC(0.15, 0.73, Form("#Delta #phi = %.1f", threshold_deltaphi));
-      dphidx.DrawLatexNDC(0.15, 0.70, "Fit Results: ");
-      dphidx.DrawLatexNDC(0.15, 0.67, Form("Slope (a): %f +/- %f", fitFunc->GetParameter(0), fitFunc->GetParError(0)));
-      dphidx.DrawLatexNDC(0.15, 0.64, Form("Intercept (b): %f +/- %f", fitFunc->GetParameter(1), fitFunc->GetParError(1)));
-      dphidx.DrawLatexNDC(0.15, 0.61, Form("Chi-square: %f", fitFunc->GetChisquare()));
-      dphidx.DrawLatexNDC(0.15, 0.58, Form("NDF: %d", fitFunc->GetNDF()));
-
-      //select best candidate
-      //double chiNDF = fitFunc->GetChisquare()/fitFunc->GetNDF();
-      //std::cout<<"chiNDF*100.0 = "<<chiNDF*100.0<<std::endl;
-
-      //delete
-      delete canvas;
-      delete graph;
-      delete title;
-      //delete zeroLine;
-      //Plot end
-
-    }//end
-
-
   }//end ev5_select_best_segments_step_06
 
 //-----------------------------------------------------------------------------
@@ -2170,6 +2053,126 @@ namespace mu2e {
 
   }//end ev5_select_best_segments_step_07
 
+
+//-----------------------------------------------------------------------------
+// finding circle from triplet
+//-----------------------------------------------------------------------------
+void PhiZSeedFinder::initTriplet(triplet& trip, int& outcome) {
+
+  _circleFitter.addPoint(trip.i.pos->x(), trip.i.pos->y());
+  _circleFitter.addPoint(trip.j.pos->x(), trip.j.pos->y());
+  _circleFitter.addPoint(trip.k.pos->x(), trip.k.pos->y());
+
+  // check if circle is valid for search or if we should continue to next triplet
+  //float radius = _circleFitter.radius();
+  //float pt = computeHelixPerpMomentum(radius, _bz0);
+  //if (pt < _minHelixPerpMomentum || pt > _maxHelixPerpMomentum) {
+    //outcome = 0;
+  //} else {
+    //outcome = 1;
+  //}
+  outcome = 1;
+}
+
+//-----------------------------------------------------------------------------
+// start with initial seed circle
+//-----------------------------------------------------------------------------
+void PhiZSeedFinder::initSeedCircle(int& outcome) {
+
+  // get triplet circle parameters then clear fitter
+  float xC = _circleFitter.x0();
+  float yC = _circleFitter.y0();
+  float rC = _circleFitter.radius();
+  _circleFitter.clear();
+  std::cout<<"xC/yC/rC = "<<xC<<"/"<<yC<<"/"<<rC<<std::endl;
+
+  // project error bars onto the triplet circle found and add to fitter those within defined max
+  // residual
+}
+
+
+//-----------------------------------------------------------------------------
+  void PhiZSeedFinder::findHelix(const std::vector<std::vector<ev5_HitsInNthStation>>& best_triplet_segments, HelixSeedCollection& HSColl){
+
+    _circleFitter.clear();
+
+    //select triplets
+    int nSegments = best_triplet_segments.size();
+    for(int i=0; i<nSegments; i++){
+      std::vector<std::vector<int>> hitID_list;
+      hitID_list.clear();
+      int hit[3];
+    //loop over ComboHits in TC
+
+    for(int j=0; j<(int)best_triplet_segments.at(i).size(); j++){
+      hit[0] = best_triplet_segments.at(i).at(j).hitID;
+      for(int k=0; k<(int)best_triplet_segments.at(i).size(); k++){
+        if(k==j) continue;
+        hit[1] = best_triplet_segments.at(i).at(k).hitID;
+        for(int l=0; l<(int)best_triplet_segments.at(i).size(); l++){
+        if(l==j or l==k) continue;
+        hit[2] = best_triplet_segments.at(i).at(l).hitID;
+        std::vector<int> temp_hitID_list;
+        for(int m=0; m<3; m++) temp_hitID_list.push_back(hit[m]);
+        sort(temp_hitID_list.begin(), temp_hitID_list.end());
+        hitID_list.push_back(temp_hitID_list);
+        temp_hitID_list.clear();
+       }
+      }
+     }
+
+    // Remove duplicates triplet combinations
+    std::sort(hitID_list.begin(), hitID_list.end());
+    hitID_list.erase(std::unique(hitID_list.begin(), hitID_list.end()), hitID_list.end());
+
+    // fit circle for each triplet
+    for(int j=0; j<(int)hitID_list.size(); j++){
+      double x[3] = {0.0};
+      double y[3] = {0.0};
+      for(int p=0; p<3; p++){
+        for(int k=0; k<(int)best_triplet_segments.at(i).size(); k++){
+          if(hitID_list[j][p] == best_triplet_segments.at(i).at(k).hitID){
+          x[p] = best_triplet_segments.at(i).at(k).x;
+          y[p] = best_triplet_segments.at(i).at(k).y;
+         }
+       }
+      }
+      _circleFitter.addPoint(x[0], y[0]);
+      _circleFitter.addPoint(x[1], y[1]);
+      _circleFitter.addPoint(x[2], y[2]);
+      float radius = _circleFitter.radius();
+      std::cout<<"radius = "<<radius<<std::endl;
+
+      int loopCondition;
+      //initTriplet(tripletInfo, loopCondition);
+      initSeedCircle(loopCondition);
+      //initHelixPhi();
+      //findSeedPhiLines();
+      //resolve2PiAmbiguities();
+      //initFinalSeed();
+    }
+
+    HelixSeed hseed;
+    //hseed._t0 = tccol1->at(tc)._t0;
+    //auto _tcCollH = _event->getValidHandle<TimeClusterCollection>(_tcLabel);
+    //hseed._timeCluster = art::Ptr<mu2e::TimeCluster>(_tcCollH, tc);
+    //hseed._hhits.setParent(_chColl->parent());
+    hseed._helix._radius = 2;
+    hseed._helix._rcent  = 2;
+    hseed._helix._fcent  = 2;
+    hseed._helix._lambda = 2;
+    hseed._helix._fz0    = 2;
+   // auto _tcCollH = _event->getValidHandle<TimeClusterCollection>(_tcLabel);
+    //hseed._timeCluster = art::Ptr<mu2e::TimeCluster>(_tcCollH, tc);
+    //hseed._hhits.setParent(_chColl->parent());
+
+    // push back the helix seed to the helix seed collection
+    HSColl.emplace_back(hseed);
+
+    }
+
+  }
+
 //-----------------------------------------------------------------------------
 // Function to create the time clusters
 //-----------------------------------------------------------------------------
@@ -2202,55 +2205,39 @@ namespace mu2e {
 
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//-----------------------------------------------------------------------------
+// event entry point
 //-----------------------------------------------------------------------------
   void PhiZSeedFinder::produce(art::Event& Event) {
     if (_debugLevel) printf("* >>> PhiZSeedFinder::produce  event number: %10i\n",Event.event());
-//-----------------------------------------------------------------------------
-// clear memory in the beginning of event processing and cache event pointer
-//-----------------------------------------------------------------------------
+    //-----------------------------------------------------------------------------
+    // clear memory in the beginning of event processing and cache event pointer
+    //-----------------------------------------------------------------------------
     _data.InitEvent(&Event,_debugLevel);
-//-----------------------------------------------------------------------------
-// process event
-//-----------------------------------------------------------------------------
+
+    //-----------------------------------------------------------------------------
+    // process event
+    //-----------------------------------------------------------------------------
     if (! findData(Event)) {
       const char* message = "mu2e::PhiZSeedFinder_module::produce: data missing or incomplete";
       throw cet::exception("RECO")<< message << endl;
     }
 
-    _data._nTimeClusters = _data.tccol->size();
-//-----------------------------------------------------------------------------
-//
-//-----------------------------------------------------------------------------
+    //-----------------------------------------------------------------------------
+    // produce a new "TimeClusterCollection" as an output
+    //-----------------------------------------------------------------------------
     std::unique_ptr<TimeClusterCollection> tccol1(new TimeClusterCollection);
 
-//-----------------------------------------------------------------------------
-// run delta finder, it also finds proton time clusters
-//-----------------------------------------------------------------------------
-  std::cout<<"PhiZSeed_kita"<<std::endl;
+    //-----------------------------------------------------------------------------
+    // produce a new "HelixSeedCollection" as an output
+    //-----------------------------------------------------------------------------
+    std::unique_ptr<HelixSeedCollection> hsColl(new HelixSeedCollection);
+    _hsColl = hsColl.get();
+
+    //-----------------------------------------------------------------------------
+    // run PhiZ finder to search segment
+    //-----------------------------------------------------------------------------
+    _data._nTimeClusters = _data.tccol->size();
     for (int i=0; i<_data._nTimeClusters; i++) {
       const TimeCluster* tc = &_data.tccol->at(i);
       _finder->run(tc);
@@ -2265,7 +2252,7 @@ namespace mu2e {
       //}
       double thre_residual = 0.4;// +/-0.4[rad] delta phi window for the slope
       //-----------------------------------------
-      // segment search in 3 consecutive stations
+      // find segment in 3 consecutive stations
       //-----------------------------------------
       std::vector<std::vector<ev5_HitsInNthStation>> best_triplet_segments;
       best_triplet_segments.clear();
@@ -2274,11 +2261,12 @@ namespace mu2e {
       ev5_SegmentSearchInTriplet(HitsInTimeCluster, best_triplet_segments, diag_best_triplet_segments, thre_residual);
 
       //-----------------------------------------------------------------------------
-      // make a new time cluster
+      // make a new time cluster (maybe not needed, can be removed in the future)
       //-----------------------------------------------------------------------------
       for(int j=0; j<(int)best_triplet_segments.size(); j++){
       const std::vector<StrawHitIndex>& ordchcol = tc->hits();
       int nh = ordchcol.size();
+    _data._nTimeClusters = _data.tccol->size();
       std::vector<int> hitindex;
       for(int ih=0; ih<nh; ih++){
         int ind = ordchcol[ih];
@@ -2290,8 +2278,9 @@ namespace mu2e {
           if(hitID[0] == hitID[1]) hitindex.push_back(ih);
         }
       }
-      //fill
+      //fill to the new TimeCluster
       TimeCluster new_tc;
+      std::cout<<"(int)hitindex.size() = "<<(int)hitindex.size()<<std::endl;
       for(int k=0; k<(int)hitindex.size(); k++){
         int ih = hitindex[k];
         new_tc._strawHitIdxs.push_back(ordchcol[ih]);
@@ -2300,19 +2289,41 @@ namespace mu2e {
       tccol1->push_back(new_tc);
       }
 
-    }
+      //-----------------------------------------------------------------------------
+      // find Helix
+      //-----------------------------------------------------------------------------
+      findHelix(best_triplet_segments, *_hsColl);
 
-    // Save the output time cluster collection for the diagnostics
+
+    }//end PhiZ finder
+
+
+
+    //-----------------------------------------------------------------------------
+    // set diagnostic tool data members
+    //-----------------------------------------------------------------------------
     if (_diagLevel > 0) {
+        //clear
+        //_data._tccolnew->clear();
+        _data.nTimeClusters = 0;
+        _data.nComboHits = 0;
+        _data.nStrawHits = 0;
+        //fill
         _data._tccolnew = tccol1.get();
-        //make Histograms
+        _data._hscolnew = hsColl.get();
         _hmanager->fillHistograms(&_data);
     }
 
-     Event.put(std::move(tccol1));
+    //-----------------------------------------------------------------------------
+    // put helix seed collection into the event record
+    //-----------------------------------------------------------------------------
+    Event.put(std::move(tccol1));
+    Event.put(std::move(hsColl));
 
-  }
+  }//end event entry point
+
 }
+
 //-----------------------------------------------------------------------------
 // macro that makes this class a module.
 //-----------------------------------------------------------------------------
