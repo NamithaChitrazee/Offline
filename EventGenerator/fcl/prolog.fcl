@@ -165,7 +165,7 @@ EventGenerator : {
     }
 }
 
-EventGeneratorMu : { module_type : EventGeneratorMu
+EventGeneratorMu : { module_type : "EventGeneratorMu"
 #------------------------------------------------------------------------------
 # generate e+ from one foil
 #------------------------------------------------------------------------------
@@ -176,6 +176,20 @@ EventGeneratorMu : { module_type : EventGeneratorMu
     lifetime        : 1.e10                ## stopped mu+ lifetime
     verbosityLevel  : 0
     generator       : { }                  ## to be defined
+}
+
+ParticleGunMu : { tool_type: "ParticleGunMu"
+    nParticles      :   1
+    pdgCode         :  11                        ## electrons
+    processCode     : "mu2eMuonDecayAtRest"      ## fake whatever fakeable
+    shape           : "foil"                     ## "foil" or "sphere" or "box"
+    center          : [  -0.,  0., 6249.  ]
+    dimensions      : [  20., 75.,    0.1 ]
+    czmin           : -1.
+    czmax           :  1
+    pmin            : 100.
+    pmax            : 100.
+    mode            : "flat"
 }
 
 GenFilter : {
@@ -394,7 +408,7 @@ EventGenerator : { @table::EventGenerator
             lifetime        : 1.e10                ## stopped mu+ lifetime
             verbosityLevel  : 0
 
-            generator  : { tool_type: "ParticleGunMu"
+            generator  : { @table::ParticleGunMu
                 nParticles      : 1
                 pdgCode         : -11                  ## positrons
                 shape           : "foil"
@@ -404,7 +418,6 @@ EventGenerator : { @table::EventGenerator
                 czmax           : 0.11
                 pmin            : 70.
                 pmax            : 70.
-                mode            : "flat"
             }
         }
     }
