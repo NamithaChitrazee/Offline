@@ -5,6 +5,7 @@
 #include "canvas/Utilities/InputTag.h"
 #include "fhiclcpp/types/Atom.h"
 #include "fhiclcpp/types/Sequence.h"
+#include "fhiclcpp/types/OptionalTable.h"
 
 #include "Offline/ConditionsService/inc/ConditionsHandle.hh"
 #include "Offline/ConfigTools/inc/ConfigFileLookupPolicy.hh"
@@ -16,13 +17,18 @@
 #include "Offline/RecoDataProducts/inc/BkgClusterHit.hh"
 
 #include "Offline/TrkHitReco/inc/TNTClusterer.hh"
+#include "Offline/TrkHitReco/inc/Chi2Clusterer.hh"
 #include "Offline/TrkHitReco/inc/TrainBkgDiag.hxx"
+#include "Offline/TrkHitReco/inc/TrainBkgDiagStationChi2SLine.hxx"
+
+//root
+#include "TMath.h"
 
 #include <string>
 #include <vector>
 
 //Inference class
-namespace TMVA_SOFIE_TrainBkgDiag {
+namespace TMVA_SOFIE_TrainBkgDiagStationChi2SLine {
   class Session;
 }
 
@@ -37,22 +43,24 @@ namespace mu2e
       {
         using Name = fhicl::Name;
         using Comment = fhicl::Comment;
-        fhicl::Atom<art::InputTag>            comboHitCollection{   Name("ComboHitCollection"),   Comment("ComboHit collection name") };
-        fhicl::Atom<unsigned>                 minActiveHits{        Name("MinActiveHits"),        Comment("Minumim number of active hits in a cluster") };
-        fhicl::Atom<unsigned>                 minNPlanes{           Name("MinNPlanes"),           Comment("Minumim number of planes in a cluster") };
-        fhicl::Atom<float>                    clusterPositionError{ Name("ClusterPositionError"), Comment("Cluster poisiton error") };
-        fhicl::Atom<int>                      clusterAlgorithm{     Name("ClusterAlgorithm"),     Comment("Clusterer algorithm") };
-        fhicl::Atom<bool>                     filterHits{           Name("FilterHits"),           Comment("Produce filtered ComboHit collection")  };
-        fhicl::Sequence<std::string>          backgroundMask{       Name("BackgroundMask"),       Comment("Bkg hit selection mask") };
-        fhicl::Atom<bool>                     saveBkgClusters{      Name("SaveBkgClusters"),      Comment("Save bkg clusters") };
-        fhicl::Atom<std::string>              outputLevel{          Name("OutputLevel"),          Comment("Level of the output ComboHitCollection") };
-        fhicl::Atom<int>                      debugLevel{           Name("DebugLevel"),           Comment("Debug"),0 };
-        fhicl::Table<TNTClusterer::Config>    TNTClustering{        Name("TNTClustering"),        Comment("TNT Clusterer config") };
-        fhicl::Atom<std::string>              kerasWeights{         Name("KerasWeights"),         Comment("Weights for keras model") };
-        fhicl::Atom<float>                    kerasQuality{         Name("KerasQuality"),         Comment("Keras quality cut") };
+        fhicl::Atom<art::InputTag>                    comboHitCollection{   Name("ComboHitCollection"),   Comment("ComboHit collection name") };
+        fhicl::Atom<unsigned>                         minActiveHits{        Name("MinActiveHits"),        Comment("Minumim number of active hits in a cluster") };
+        fhicl::Atom<unsigned>                         minNPlanes{           Name("MinNPlanes"),           Comment("Minumim number of planes in a cluster") };
+        fhicl::Atom<float>                            clusterPositionError{ Name("ClusterPositionError"), Comment("Cluster poisiton error") };
+        fhicl::Atom<int>                              clusterAlgorithm{     Name("ClusterAlgorithm"),     Comment("Clusterer algorithm") };
+        fhicl::Atom<bool>                             filterHits{           Name("FilterHits"),           Comment("Produce filtered ComboHit collection")  };
+        fhicl::Sequence<std::string>                  backgroundMask{       Name("BackgroundMask"),       Comment("Bkg hit selection mask") };
+        fhicl::Atom<bool>                             saveBkgClusters{      Name("SaveBkgClusters"),      Comment("Save bkg clusters") };
+        fhicl::Atom<std::string>                      outputLevel{          Name("OutputLevel"),          Comment("Level of the output ComboHitCollection") };
+        fhicl::Atom<int>                              debugLevel{           Name("DebugLevel"),           Comment("Debug"),0 };
+        fhicl::OptionalTable<TNTClusterer::Config>    TNTClustering{        Name("TNTClustering"),        Comment("TNT Clusterer config") };
+        fhicl::OptionalTable<Chi2Clusterer::Config>   Chi2Clustering{       Name("Chi2Clustering"),       Comment("Chi2 Clusterer config") };
+        fhicl::Atom<std::string>                      kerasWeights{         Name("KerasWeights"),         Comment("Weights for keras model") };
+        fhicl::Atom<bool>                             useSLine{             Name("UseSLine"),             Comment("Use SLine info") };
+        fhicl::Atom<float>                            kerasQuality{         Name("KerasQuality"),         Comment("Keras quality cut") };
       };
 
-      enum clusterer {TwoNiveauThreshold=1};
+      enum clusterer {TNT=1,Chi2=2};
       explicit FlagBkgHits(const art::EDProducer::Table<Config>& config);
       void beginJob() override;
       void produce(art::Event& event) override;
@@ -69,9 +77,11 @@ namespace mu2e
       float                                       cperr2_;
       int const                                   debug_;
       std::string                                 kerasW_;
+      bool                                        useSLine_;
       float                                       kerasQ_;
       int                                         iev_;
-      std::shared_ptr<TMVA_SOFIE_TrainBkgDiag::Session> sofiePtr;
+      std::shared_ptr<TMVA_SOFIE_TrainBkgDiag::Session> sofiePtr1;
+      std::shared_ptr<TMVA_SOFIE_TrainBkgDiagStationChi2SLine::Session> sofiePtr2;
 
       void classifyCluster(BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol) const;
       int  findClusterIdx( BkgClusterCollection& bkgccol, unsigned ich) const;
@@ -87,14 +97,12 @@ namespace mu2e
     savebkg_(     config().saveBkgClusters()),
     bkgmsk_(      config().backgroundMask()),
     debug_(       config().debugLevel()),
-    kerasW_(      config().kerasWeights()),
+    kerasW_{      config().kerasWeights()},
+    useSLine_(    config().useSLine()),
     kerasQ_(      config().kerasQuality()),
     iev_(0)
     {
       ConfigFileLookupPolicy configFile;
-      auto kerasWgtsFile = configFile(kerasW_);
-      sofiePtr = std::make_shared<TMVA_SOFIE_TrainBkgDiag::Session>(kerasWgtsFile);
-
       produces<ComboHitCollection>();
 
       if (savebkg_)
@@ -108,12 +116,36 @@ namespace mu2e
       clusterer ctype = static_cast<clusterer>(config().clusterAlgorithm());
       switch ( ctype )
       {
-        case TwoNiveauThreshold:
+        case TNT:
+          if(!config().TNTClustering())
+          {
+            throw cet::exception("RECO")<< "FlagBkgHits: TNTClusterer is not configured. Configure by adding\n"
+            << "physics.producers.FlagBkgHits.TNTClustering : {@table::TNTClusterer}" << std::endl;
+          }
+          if(useSLine_)
+          {
+            throw cet::exception("RECO")<< "FlagBkgHits: TNTClusterer is not configured to run with SLine training.\n"<< std::endl;
+          }
           clusterer_ = std::make_unique<TNTClusterer>(config().TNTClustering());
+          break;
+        case Chi2:
+          if(!config().Chi2Clustering())
+          {
+            throw cet::exception("RECO")<< "FlagBkgHits: Chi2Clusterer is not configured. Configure by adding\n"
+            << "physics.producers.FlagBkgHits.Chi2Clustering : {@table::Chi2Clusterer}" << std::endl;
+          }
+          clusterer_ = std::make_unique<Chi2Clusterer>(config().Chi2Clustering());
           break;
         default:
           throw cet::exception("RECO")<< "Unknown clusterer" << ctype << std::endl;
       }
+
+      auto kerasWgtsFile = configFile(kerasW_);
+      switch ( useSLine_ ){
+        case 0 :  sofiePtr1 = std::make_shared<TMVA_SOFIE_TrainBkgDiag::Session>(kerasWgtsFile);break;
+        case 1 :  sofiePtr2 = std::make_shared<TMVA_SOFIE_TrainBkgDiagStationChi2SLine::Session>(kerasWgtsFile);break;
+      }
+
       StrawIdMask mask(config().outputLevel());
       level_ = mask.level();
     }
@@ -247,15 +279,53 @@ namespace mu2e
         double sqrSumDeltaTime(0.);
         double sqrSumDeltaX(0.);
         double sqrSumDeltaY(0.);
+        double sqrSumQual(0.);
+        double sumPitch(0.);
+        double sumYaw(0.);
+        double sumwPitch(0.);
+        double sumwYaw(0.);
+        double sumEcc(0.);
+        double sumwEcc(0.);
+        unsigned nsthits(0.);
         unsigned nchits = cluster.hits().size();
         for (const auto& chit : cluster.hits()) {
           sumEdep +=  chcol[chit].energyDep()/chcol[chit].nStrawHits();
           sqrSumDeltaX += std::pow(chcol[chit].pos().x() - cluster.pos().x(),2);
           sqrSumDeltaY += std::pow(chcol[chit].pos().y() - cluster.pos().y(),2);
           sqrSumDeltaTime += std::pow(chcol[chit].time() - cluster.time(),2);
+          auto hdir = chcol[chit].hDir();
+          auto wecc = chcol[chit].nStrawHits();
+          sumEcc += std::sqrt(1-(chcol[chit].vVar()/chcol[chit].uVar()))*wecc;
+          sumwEcc += wecc;
+          if(chcol[chit].flag().hasAllProperties(StrawHitFlag::sline)){
+
+            //quality of SLine fit
+            sqrSumQual += std::pow(chcol[chit].qual(),2);
+
+            //angle with Mu2e-Y
+            double varPitch = std::pow(TMath::ACos(std::sqrt(chcol[chit].hcostVar())),2);
+            double wPitch = 1/varPitch;
+            double signPitch = hdir.Y()/std::abs(hdir.Y());
+            sumPitch += signPitch*wPitch*hdir.theta();
+            sumwPitch += wPitch;
+
+            ROOT::Math::XYZVectorF z = {0,0,1};
+            ROOT::Math::XYZVectorF dxdz = {hdir.X(),0,hdir.Z()};
+            float magdxdz = std::sqrt(dxdz.Mag2());
+
+            //angle with Mu2e-Z
+            double varYaw = std::sqrt(chcol[chit].hphiVar() + varPitch);
+            double wYaw = 1/varYaw;
+            double signYaw = hdir.X()/std::abs(hdir.X());
+            sumYaw += signYaw*wYaw*TMath::ACos(dxdz.Dot(z)/magdxdz);
+            sumwYaw += wYaw;
+
+            // # of stereo hits with SLine
+            nsthits++;
+          }
         }
         // fill mva input variables
-        std::array<float,9> kerasvars;
+        std::array<float,12> kerasvars;
         kerasvars[0] = cluster.pos().Rho(); // cluster rho, cyl coor
         kerasvars[1] = fp;// first plane hit
         kerasvars[2] = lp;// last plane hit
@@ -265,8 +335,15 @@ namespace mu2e
         kerasvars[6] = nhits;// sum of straw hits
         kerasvars[7] = std::sqrt((sqrSumDeltaX+sqrSumDeltaY)/nchits);  // RMS of cluster rho
         kerasvars[8] = std::sqrt(sqrSumDeltaTime/nchits);// RMS of cluster time
+        kerasvars[9] = nsthits > 0 ? sumPitch/sumwPitch : 0.;
+        kerasvars[10] = nsthits > 0 ? sumYaw/sumwYaw : 0.;
+        kerasvars[11] = sumEcc/sumwEcc;
 
-        auto kerasout = sofiePtr->infer(kerasvars.data());
+        std::vector<float> kerasout;
+        switch ( useSLine_ ){
+        case 0 : kerasout = sofiePtr1->infer(kerasvars.data());break;
+        case 1 : kerasout = sofiePtr2->infer(kerasvars.data());break;
+        }
         cluster.setKerasQ(kerasout[0]);
         if(debug_>0)std::cout << "kerasout = " << kerasout[0] << std::endl;
 

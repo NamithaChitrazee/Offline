@@ -1,6 +1,7 @@
 #include "Offline/DbTables/inc/DbTableFactory.hh"
 #include "Offline/DbTables/inc/AnaTrkQualDb.hh"
 #include "Offline/DbTables/inc/CRVBadChan.hh"
+#include "Offline/DbTables/inc/CRVPhoton.hh"
 #include "Offline/DbTables/inc/CRVSiPM.hh"
 #include "Offline/DbTables/inc/CRVTime.hh"
 #include "Offline/DbTables/inc/STMEnergyPar.hh"
@@ -18,7 +19,9 @@
 #include "Offline/DbTables/inc/CalCosmicT0Align.hh"
 
 #include "Offline/DbTables/inc/TrkAlignElement.hh"
+#include "Offline/DbTables/inc/TrkAlignElementSim.hh"
 #include "Offline/DbTables/inc/TrkAlignStraw.hh"
+#include "Offline/DbTables/inc/TrkAlignStrawSim.hh"
 #include "Offline/DbTables/inc/TrkDelayPanel.hh"
 #include "Offline/DbTables/inc/TrkDelayRStraw.hh"
 #include "Offline/DbTables/inc/TrkElementStatus.hh"
@@ -26,6 +29,7 @@
 #include "Offline/DbTables/inc/TstCalib1.hh"
 #include "Offline/DbTables/inc/TstCalib2.hh"
 #include "Offline/DbTables/inc/TstCalib3.hh"
+#include "Offline/DbTables/inc/TstAdhoc1.hh"
 #include "cetlib_except/exception.h"
 
 
@@ -36,6 +40,8 @@ mu2e::DbTable::ptr_t mu2e::DbTableFactory::newTable(std::string const& name) {
     return std::shared_ptr<mu2e::DbTable>(new mu2e::TstCalib2());
   } else if (name == "TstCalib3") {
     return std::shared_ptr<mu2e::DbTable>(new mu2e::TstCalib3());
+  } else if (name == "TstAdhoc1") {
+    return std::shared_ptr<mu2e::DbTable>(new mu2e::TstAdhoc1());
   } else if (name == "TrkDelayPanel") {
     return std::shared_ptr<mu2e::DbTable>(new mu2e::TrkDelayPanel());
   } else if (name == "TrkDelayRStraw") {
@@ -50,6 +56,14 @@ mu2e::DbTable::ptr_t mu2e::DbTableFactory::newTable(std::string const& name) {
     return std::shared_ptr<mu2e::DbTable>(new mu2e::TrkAlignPanel());
   } else if (name == "TrkAlignStraw") {
     return std::shared_ptr<mu2e::DbTable>(new mu2e::TrkAlignStraw());
+  } else if (name == "TrkAlignTrackerSim") {
+    return std::shared_ptr<mu2e::DbTable>(new mu2e::TrkAlignTrackerSim());
+  } else if (name == "TrkAlignPlaneSim") {
+    return std::shared_ptr<mu2e::DbTable>(new mu2e::TrkAlignPlaneSim());
+  } else if (name == "TrkAlignPanelSim") {
+    return std::shared_ptr<mu2e::DbTable>(new mu2e::TrkAlignPanelSim());
+  } else if (name == "TrkAlignStrawSim") {
+    return std::shared_ptr<mu2e::DbTable>(new mu2e::TrkAlignStrawSim());
   } else if (name == "TrkPlaneStatus") {
     return std::shared_ptr<mu2e::DbTable>(new mu2e::TrkPlaneStatus());
   } else if (name == "TrkPanelStatus") {
@@ -70,6 +84,8 @@ mu2e::DbTable::ptr_t mu2e::DbTableFactory::newTable(std::string const& name) {
     return std::shared_ptr<mu2e::DbTable>(new mu2e::STMPedestals());
   } else if (name == "CRVBadChan") {
     return std::shared_ptr<mu2e::DbTable>(new mu2e::CRVBadChan());
+  } else if (name == "CRVPhoton") {
+    return std::shared_ptr<mu2e::DbTable>(new mu2e::CRVPhoton());
   } else if (name == "CRVSiPM") {
     return std::shared_ptr<mu2e::DbTable>(new mu2e::CRVSiPM());
   } else if (name == "CRVTime") {

@@ -362,9 +362,7 @@ CalPatRec : { @table::CalPatRec
                 pickupProtonHits        : 1                     # the third step of proton finding
 
                 timeBin                 : 40                    # ns, prev: 50 (use 40 with makePH.maxDS=5)
-                minHitTime              : 350.                  # ns, not used
-                minimumTime             : 400.                  # ns, not used
-                maximumTime             : 1750.                 # ns
+                maximumTime             : 1750.                 # ns, used
                 maxDeltaEDep            : 0.004                 # max allowed delta eDep
                 maxSeedEDep             : 0.005                 # max allowed seed eDep
                 minProtonSeedEDep       : 0.003                 # min allowed proton seed eDep
@@ -425,43 +423,6 @@ CalPatRec : { @table::CalPatRec
                 printProtonHits         : 0
                 printProtonSeeds        : 0
                 printProtonCandidates   : 0
-                mcUtils                 : { tool_type : "TrkRecoMcUtils"
-                    strawDigiMCCollTag : "compressDigiMCs"
-                    comboHitCollTag    : "makePH"
-                }
-            }
-        }
-#------------------------------------------------------------------------------
-        PhiZSeedFinder : { module_type:PhiZSeedFinder
-            chCollTag                   : "makePH"              ## input CH coll
-            sschCollTag                 : "makeSH"              ## input single-straw CH coll
-            sdmcCollTag                 : "compressDigiMCs"     ## used for debug only
-
-            testHitMask                 : false                 ## off by default
-            goodHitMask                 : [ "TimeDivision" ]    ## is there a point in using combohits made
-                                                                ## out of straw hits with an apriory wrong wdist ?
-            bkgHitMask                  : [  ]                  ##
-            writeFilteredComboHits      : 0                     ## by default, clone all hits with updated flags
-            writeStrawHits              : 1                     ## used by the track fit
-            testOrder                   : 0
-
-            debugLevel                  : 0
-            diagLevel                   : 0
-            printErrors                 : 0
-                                                                # finder algorithm parameters
-            finderParameters            : {
-                testOrder               : 0
-                debugLevel              : 0
-                diagLevel               : 0
-                printErrors             : 0
-            }
-#
-            diagPlugin                  : { tool_type : "PhiZSeedFinderDiag"
-                diagLevel               : 0
-                mcDiag                  : false
-                mcTruth                 : 0
-                printComboHits          : 0
-                printGoodComboHits      : 0
                 mcUtils                 : { tool_type : "TrkRecoMcUtils"
                     strawDigiMCCollTag : "compressDigiMCs"
                     comboHitCollTag    : "makePH"
@@ -622,15 +583,6 @@ CalPatRec : { @table::CalPatRec
             caloDtMax                  : 30.0
             caloTimeOffset             : @local::TrackCaloMatching.DtOffset
             doRefine                   : 0
-            minSHsInCluster            : 15
-            minCHsInCluster            : 10
-            nPairs                     : 1
-            minCHsInCubes              : 2
-            maxDeltaRInStn             : 100
-            maxDeltaRBtwStns           : 120
-            maxDeltaPhiInStn           : 0.4
-            maxDeltaPhiBtwStns         : 0.6
-            thirdStation               : true
 
             diagPlugin : { tool_type  : "TZClusterFinderDiag"
                  mcTruth       : 1
@@ -639,19 +591,18 @@ CalPatRec : { @table::CalPatRec
             }
         }
 
-        HelixFinder : {
-            module_type : HelixFinder
+        AgnosticHelixFinder : {
+            module_type : AgnosticHelixFinder
             diagLevel               : 0
             debug                   : 0
             runDisplay              : 0
             chCollLabel             : "FlagBkgHits"
-            tcCollLabel             : "TimeClusterFinderDe"
+            tcCollLabel             : "TZClusterFinder"
             ccCollLabel             : "CaloClusterMaker"
             findMultipleHelices     : true # whether or not to allow more than 1 helix per tc
             useStoppingTarget       : true
             intenseEventThresh      : 30
             intenseClusterThresh    : 60
-            doLineFlag              : false
             doIsolationFlag         : true
             isoRad                  : 150.0
             isoMinHitsNear          : 2
@@ -662,12 +613,13 @@ CalPatRec : { @table::CalPatRec
             maxTripletDz            : 500.0
             minTripletDist          : 50.0
             minTripletArea          : 1.0e4
-            maxSeedCircleResidual   : 1.0
+            maxSeedCircleResidual   : 2.0
             minSeedCircleHits       : 7
-            maxDeltaPhi             : 2.0
-            maxZWindow              : 500.0
+            maxDphiDz               : 0.008
+            maxZWindow              : 700.0
             minLineSegmentHits      : 3
             segMultiplier           : 3.0
+            maxSegmentChi2          : 2.0
             max2PiAmbigResidual     : 2.0
             maxPhiZResidual         : 2.0
             minFinalSeedHits        : 7
@@ -687,7 +639,7 @@ CalPatRec : { @table::CalPatRec
             debugStrawHitThresh     : 12
             debugScatterThresh      : 3.0
             mcUtils                 : { @table::TrkReco.McUtils }
-            diagPlugin              : { tool_type : "HelixFinderDiag" }
+            diagPlugin              : { tool_type : "AgnosticHelixFinderDiag" }
         }
 
         PhiClusterFinder : { module_type : PhiClusterFinder
@@ -724,6 +676,25 @@ CalPatRec : { @table::CalPatRec
 #------------------------------------------------------------------------------
 # new modules
 #------------------------------------------------------------------------------
+
+        # TZClusterFilter module
+        TZClusterFilter : {
+            module_type         : TZClusterFilter
+            diagLevel           : 0
+            runDisplay          : 0
+            chCollLabel         : "FlagBkgHits"     # same as TZClusterFinder
+            tcCollLabel         : "TZClusterFinder"
+            minSHsInCluster     : 15
+            minCHsInCluster     : 10
+            nPairs              : 1
+            minCHsInCubes       : 2
+            maxDeltaRInStn      : 100
+            maxDeltaRBtwStns    : 120
+            maxDeltaPhiInStn    : 0.4
+            maxDeltaPhiBtwStns  : 0.6
+            thirdStation        : true
+        }
+
         CalTimePeakFinder          : { module_type:CalTimePeakFinder
             diagLevel                                   : 0
             debugLevel                                  : 0
@@ -761,6 +732,7 @@ CalPatRec : { @table::CalPatRec
             minNHitsTimeCluster                         : @local::CalPatRec.minNStrawHits
             fitparticle                                 : @local::Particle.eminus
             fitdirection                                : @local::FitDir.downstream
+            doSingleOutput                              : false
 
             # HelixFinderAlg configuraton (pattern recognition)
             HelixFinderAlg                              : { @table::CalPatRec.HelixFinderAlg }

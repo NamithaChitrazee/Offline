@@ -4,11 +4,9 @@
 #include "TObject.h"
 #include "TClonesArray.h"
 #include "Math/Vector3D.h"
-// #include "Math/Vector4D.h"
 
 using ROOT::Math::XYZVectorF;
 
-// #include "Offline/CalPatRec/inc/CalPatRec_enums.hh"
 #include "Offline/CalPatRec/inc/DeltaFinder_structures.hh"
 
 namespace mu2e {
