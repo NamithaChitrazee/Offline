@@ -1789,7 +1789,7 @@ namespace mu2e {
             mom    = pcp->fMcPart->Momentum();
           }
           printf("* :pc:%05i itime:%3i",pc->index(),pc->timeIndex());
-          printf("  nh:nCE %3i:%2i", pc->nHitsTot(),pcp->fNHitsCE);
+          printf("  nh:nHighEDep:nCE %3i:%3i:%2i", pc->nHitsTot(),pc->nHighEDepHits(),pcp->fNHitsCE);
           printf(" s1:s2 : %02i:%02i",pc->fFirstStation,pc->fLastStation);
           printf(" simID=%5i pdgID=%10i mom=%8.2f\n",sim_id,pdg_id,mom);
           printf("----------------------------------------------------------------------------------------------------------------\n");

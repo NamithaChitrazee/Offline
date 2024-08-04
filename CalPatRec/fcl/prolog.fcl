@@ -365,9 +365,10 @@ CalPatRec : { @table::CalPatRec
                 maximumTime             : 1750.                 # ns, used
                 maxDeltaEDep            : 0.004                 # max allowed delta eDep
                 maxSeedEDep             : 0.005                 # max allowed seed eDep
+                maxEleHitEnergy         : 0.0200                # [MeV] , 0.02 means: 'use all hits' (emax ~ 6 keV)
                 minProtonSeedEDep       : 0.003                 # min allowed proton seed eDep
                 minProtonHitEDep        : 0.003                 # min allowed proton hit  eDep
-                maxEleHitEnergy         : 0.0200                # [MeV] , 0.02 means: 'use all hits' (emax ~ 6 keV)
+                minNHighEDepHitsProton  : 4                     # min number of high eDep hits on a proton candidate
 #------------------------------------------------------------------------------
 # for moving upstream, the combination sigmaR=2.6 rCore=4.2 gives:
 #                     N(delta hits) : 98749 and N(conv hits) : 184
@@ -732,7 +733,6 @@ CalPatRec : { @table::CalPatRec
             minNHitsTimeCluster                         : @local::CalPatRec.minNStrawHits
             fitparticle                                 : @local::Particle.eminus
             fitdirection                                : @local::FitDir.downstream
-            doSingleOutput                              : false
 
             # HelixFinderAlg configuraton (pattern recognition)
             HelixFinderAlg                              : { @table::CalPatRec.HelixFinderAlg }
