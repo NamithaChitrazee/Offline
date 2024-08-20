@@ -380,20 +380,22 @@ namespace mu2e {
     // Pion Degrader
     //******************
 
-    (_pabs->_degraderBuild) = _config.getBool("degrader.build",false);
+    _pabs->_degraderBuild = _config.getBool("degrader.build"  ,false);
     if ( _pabs->_degraderBuild ) {
-      _pabs->_degraderRot = _config.getDouble("degrader.rotation");
-      _pabs->_degraderZ0 =  _config.getDouble("degrader.upstreamEdge.z");
-      _pabs->_degraderFiltMaterial =
-        _config.getString("degrader.filter.materialName");
-      _pabs->_degraderFramMaterial =
-        _config.getString("degrader.frame.materialName");
-      _pabs->_degraderCowtMaterial =
-        _config.getString("degrader.counterweight.materialName");
-      _pabs->_degraderRodMaterial =
-        _config.getString("degrader.rod.materialName");
-      _pabs->_degraderSuptMaterial =
-        _config.getString("degrader.support.materialName","G4_Al");
+      _pabs->_degraderVersion = _config.getInt   ("degrader.version"  ,2);
+      _pabs->_degraderRot     = _config.getDouble("degrader.rotation");
+      _pabs->_degraderZ0      = _config.getDouble("degrader.upstreamEdge.z");
+      _pabs->_degraderFiltMaterial = _config.getString("degrader.filter.materialName");
+
+      if (_pabs->_degraderVersion == 3) {
+        _pabs->_degraderFilter2Material   = _config.getString("degrader.filter2.materialName");
+        _pabs->_degraderConverterMaterial = _config.getString("degrader.converter.materialName");
+      }
+
+      _pabs->_degraderFramMaterial = _config.getString("degrader.frame.materialName");
+      _pabs->_degraderCowtMaterial = _config.getString("degrader.counterweight.materialName");
+      _pabs->_degraderRodMaterial  = _config.getString("degrader.rod.materialName");
+      _pabs->_degraderSuptMaterial = _config.getString("degrader.support.materialName","G4_Al");
 
       double rin = _config.getDouble("degrader.frame.rIn");
       _pabs->_degraderFrameDims.push_back(rin);
@@ -463,6 +465,30 @@ namespace mu2e {
       _pabs->_degraderSupportPlateDims.push_back(hlpy);
       double hlpz = _config.getDouble("degrader.supportPlate.dz",0.0);
       _pabs->_degraderSupportPlateDims.push_back(hlpz);
+
+      if (_pabs->_degraderVersion == 3) {
+//-----------------------------------------------------------------------------
+// P.Murat: parameters of the second filter disk and the converter
+//-----------------------------------------------------------------------------
+        double rin2 = _config.getDouble("degrader.filter2.rIn");
+        _pabs->_degraderFilter2Dims.push_back(rin2);
+        double rout2 = _config.getDouble("degrader.filter2.rOut");
+        _pabs->_degraderFilter2Dims.push_back(rout2);
+        double hl2  = _config.getDouble("degrader.filter2.halfLength");
+        _pabs->_degraderFilter2Dims.push_back(hl2);
+//-----------------------------------------------------------------------------
+// parameters of the second filter disk and the converter
+// to minimize the energy losses may want to move the converter ring a bit forward
+//-----------------------------------------------------------------------------
+        double rin_conv  = _config.getDouble("degrader.converter.rIn");
+        _pabs->_degraderConverterDims.push_back(rin_conv);
+        double rout_conv = _config.getDouble("degrader.converter.rOut");
+        _pabs->_degraderConverterDims.push_back(rout_conv);
+        double hl_conv   = _config.getDouble("degrader.converter.halfLength");
+        _pabs->_degraderConverterDims.push_back(hl_conv);
+        double dz_conv   = _config.getDouble("degrader.converter.dz");
+        _pabs->_degraderConverterDz = dz_conv;
+      }
 
     } // end of the if for Pion Degrader building
 
@@ -550,7 +576,6 @@ namespace mu2e {
       }
       _pabs->_ipaSupport->_supportWireMap.push_back( wireVector );
     }
-
   }
 
 
