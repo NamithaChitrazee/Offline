@@ -31,6 +31,7 @@ namespace mu2e {
     int          fGood;             // <killer number> if not to be used - what about 0 ?
     int          fNHits;            // total number of combo hits
     int          fNStrawHits;       // total number of straw hits
+    int          fNHighEDepHits;    // number of combohits with eDep > _minProtonHitEDep
 
     int          fSFace[2];         // faces making the stereo seed
     float        fChi21;            // chi2's of the two initial hits, also stored in hit data
@@ -90,6 +91,7 @@ namespace mu2e {
     HitData_t*       HitData (int Face) { return fHitData[Face]; } // no boundary check !
     int              nHits   ()         { return fNHits; }
     int              nStrawHits()       { return fNStrawHits; }
+    int              nHighEDepHits()    { return fNHighEDepHits; }
 
     float            SumEDep ()         { return fSumEDep ; }
     float            EDep    ()         { return fSumEDep/fNStrawHits ; }
@@ -124,9 +126,10 @@ namespace mu2e {
       return fHitData[fSFace[0]]->fCorrTime-fHitData[fSFace[1]]->fCorrTime;
     }
 
-    void             SetStation    (int Station) { fStation     = Station; }
-    void             SetDeltaIndex (int Index  ) { fDeltaIndex  = Index  ; }
-    void             setProtonIndex(int Index  ) { fProtonIndex = Index  ; }
+    void             SetStation      (int Station) { fStation       = Station; }
+    void             SetDeltaIndex   (int Index  ) { fDeltaIndex    = Index  ; }
+    void             SetNHighEDepHits(int N      ) { fNHighEDepHits = N      ; }
+    void             setProtonIndex  (int Index  ) { fProtonIndex   = Index  ; }
 //-----------------------------------------------------------------------------
 // less trivial functions .. HitData_t knows its ZFace
 //-----------------------------------------------------------------------------

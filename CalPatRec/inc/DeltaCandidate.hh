@@ -26,6 +26,7 @@ namespace mu2e {
       int                   fNSeeds;
       int                   fNHits;                // n(combo hits)
       int                   fNStrawHits;           // number of straw hits
+      int                   fNHighEDepHits;
       float                 fSumEDep;              //
                                                    // LSQ sums
       double                fSx;
@@ -57,6 +58,7 @@ namespace mu2e {
       int        NSeeds               () const { return fNSeeds; }
       int        nHits                () const { return fNHits; }
       int        nStrawHits           () const { return fNStrawHits; }
+      int        nHighEDepHits        () const { return fNHighEDepHits; }
       DeltaSeed* Seed            (int I) const { return fSeed[I]; }
       bool       StationUsed     (int I) const { return (fSeed[I] != NULL); }
       int        LastStation          () const { return fLastStation ; }

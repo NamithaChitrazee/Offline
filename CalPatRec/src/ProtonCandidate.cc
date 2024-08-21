@@ -18,6 +18,7 @@ namespace mu2e {
     fNStationsWithHits = 0;
     fNHitsTot          = 0;
     fNStrawHitsTot     = 0;
+    fNHighEDepHits     = 0;
     fSumEDep           = 0;
     fTMid              = 0;
 
@@ -109,6 +110,7 @@ namespace mu2e {
         }
       }
     }
+    fNHighEDepHits += Seed->nHighEDepHits();
 //-----------------------------------------------------------------------------
 // knowing phi may be helpful
 //-----------------------------------------------------------------------------
