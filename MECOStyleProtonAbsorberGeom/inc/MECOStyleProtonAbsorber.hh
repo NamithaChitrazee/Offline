@@ -140,21 +140,29 @@ namespace mu2e {
     const InnerProtonAbsSupport* getIPAsupport() const { return _ipaSupport.get(); }
 
     // Pion Degrader
-    bool        degraderBuild()    const { return _degraderBuild; }
-    double      degraderRotation() const { return _degraderRot; }
-    double      degraderZ0()       const { return _degraderZ0; }
-    std::string degraderFilterMaterial() const { return _degraderFiltMaterial;}
-    std::string degraderFrameMaterial()  const { return _degraderFramMaterial;}
-    std::string degraderCountwtMaterial() const {return _degraderCowtMaterial;}
-    std::string degraderRodMaterial() const { return  _degraderRodMaterial; }
-    std::string degraderSupportMaterial() const {return _degraderSuptMaterial;}
-    std::vector<double> degraderFrameDims() const {return  _degraderFrameDims;}
-    std::vector<double> degraderFilterDims() const {return  _degraderFilterDims;}
-    std::vector<double> degraderCounterwtDims() const { return  _degraderCounterDims; }
-    std::vector<double> degraderRodDims() const { return _degraderRodDims;}
-    std::vector<double> degraderPivotPos() const { return _degraderPivotPos;}
-    std::vector<double> degraderSupportArmDims() const { return _degraderSupportArmDims;}
-    std::vector<double> degraderSupportPlateDims() const { return _degraderSupportPlateDims;}
+    bool                degraderBuild            () const { return _degraderBuild; }
+    int                 degraderVersion          () const { return _degraderVersion; }
+    double              degraderRotation         () const { return _degraderRot; }
+    double              degraderZ0               () const { return _degraderZ0; }
+    std::string         degraderFilterMaterial   () const { return _degraderFiltMaterial     ;}
+    std::string         degraderFilter2Material  () const { return _degraderFilter2Material  ;}
+    std::string         degraderConverterMaterial() const { return _degraderConverterMaterial;}
+    std::string         degraderFrameMaterial    () const { return _degraderFramMaterial;}
+    std::string         degraderCountwtMaterial  () const { return _degraderCowtMaterial;}
+    std::string         degraderRodMaterial      () const { return _degraderRodMaterial; }
+    std::string         degraderSupportMaterial  () const { return _degraderSuptMaterial;}
+    std::vector<double> degraderFrameDims        () const { return _degraderFrameDims;}
+
+    std::vector<double> degraderFilterDims       () const { return _degraderFilterDims   ;}
+    std::vector<double> degraderFilter2Dims      () const { return _degraderFilter2Dims  ;}
+    std::vector<double> degraderConverterDims    () const { return _degraderConverterDims;}
+    double              degraderConverterDz      () const { return _degraderConverterDz  ;}
+
+    std::vector<double> degraderCounterwtDims    () const { return _degraderCounterDims; }
+    std::vector<double> degraderRodDims          () const { return _degraderRodDims;}
+    std::vector<double> degraderPivotPos         () const { return _degraderPivotPos;}
+    std::vector<double> degraderSupportArmDims   () const { return _degraderSupportArmDims;}
+    std::vector<double> degraderSupportPlateDims () const { return _degraderSupportPlateDims;}
 
   protected:
 
@@ -165,14 +173,14 @@ namespace mu2e {
     double _distfromtargetend;  //distance from the target end to the start of proton absorber
     double _halflength;
     double _thickness;
-    bool _pabs1flag, _pabs2flag;
+    bool   _pabs1flag, _pabs2flag;
 
     //outer PA
     std::string _oPAmaterialName;
     double _oPAzcenter;
     double _oPAhalflength;
     double _oPAthickness;
-    bool _oPA1flag, _oPA2flag;
+    bool   _oPA1flag, _oPA2flag;
     double _oPAslotWidth;  // width of slots in OPA for ST support wires
     double _oPAslotLength;  // length of slots in OPA for ST support wires
     double _oPAslotOffset;  // offset of slots in OPA relative to DS2 part center
@@ -222,6 +230,7 @@ namespace mu2e {
 
     // Info for Pion degrader
     bool                 _degraderBuild;
+    int                  _degraderVersion;
     double               _degraderRot;
     double               _degraderZ0;
     std::string          _degraderFiltMaterial;
@@ -236,6 +245,14 @@ namespace mu2e {
     std::vector<double>  _degraderPivotPos;
     std::vector<double>  _degraderSupportArmDims;
     std::vector<double>  _degraderSupportPlateDims;
+//-----------------------------------------------------------------------------
+// P.Murat : advance the degrader : v3
+//-----------------------------------------------------------------------------
+    std::string          _degraderFilter2Material;
+    std::vector<double>  _degraderFilter2Dims;
+    std::string          _degraderConverterMaterial;
+    std::vector<double>  _degraderConverterDims;
+    double               _degraderConverterDz;
   };
 }
 #endif
