@@ -308,7 +308,7 @@ CalPatRec : { @table::CalPatRec
             addhits                                     : true
             ComboHitCollection                          : makeSH
             StrawDigiCollection                         : makeSD
-            StrawHitFlagCollection                      : "DeltaFinder:StrawHits"
+            # StrawHitFlagCollection                      : "DeltaFinder:StrawHits"
             SeedCollection                              : CalSeedFit
             CaloClusterCollection                       : "CaloClusterMaker"
             mcDigiCollTag                               : "dave,_it_is_used_only_when_debugging_MC._pasha"
@@ -365,9 +365,10 @@ CalPatRec : { @table::CalPatRec
                 maximumTime             : 1750.                 # ns, used
                 maxDeltaEDep            : 0.004                 # max allowed delta eDep
                 maxSeedEDep             : 0.005                 # max allowed seed eDep
+                maxEleHitEnergy         : 0.0200                # [MeV] , 0.02 means: 'use all hits' (emax ~ 6 keV)
                 minProtonSeedEDep       : 0.003                 # min allowed proton seed eDep
                 minProtonHitEDep        : 0.003                 # min allowed proton hit  eDep
-                maxEleHitEnergy         : 0.0200                # [MeV] , 0.02 means: 'use all hits' (emax ~ 6 keV)
+                minNHighEDepHitsProton  : 4                     # min number of high eDep hits on a proton candidate
 #------------------------------------------------------------------------------
 # for moving upstream, the combination sigmaR=2.6 rCore=4.2 gives:
 #                     N(delta hits) : 98749 and N(conv hits) : 184
@@ -438,7 +439,7 @@ CalPatRec : { @table::CalPatRec
         DeltaFinderAna : { module_type:DeltaFinderAna
             chCollTag              : "DeltaFinder"           ## "makePH"                # use combo hits
             shCollTag              : "makeSH"                # assume StrawHits have been written out
-            sschCollTag            : "DeltaFinder:StrawHits" ## "makeSH"                # 1-straw combohits
+            sschCollTag            : "makeSH" ## "DeltaFinder:StrawHits" ## "makeSH"                # 1-straw combohits
             sdmcCollTag            : "compressDigiMCs"
             debugLevel             : 0
             diagLevel              : 0
