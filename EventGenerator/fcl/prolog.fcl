@@ -206,7 +206,6 @@ genFilters : # in case we want to add more here
    }
 }
 
-
 EventGenerator : { @table::EventGenerator
     producers : {
         CeEndpointGun               : { @table::CeEndpointGun               }
