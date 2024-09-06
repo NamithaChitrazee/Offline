@@ -192,7 +192,6 @@ ParticleGunMu : { tool_type: "ParticleGunMu"
     mode            : "flat"
 }
 
-
 GenFilter : {
         module_type : GenFilter
         StageParticleCollection : "generate"
@@ -205,7 +204,6 @@ genFilters : # in case we want to add more here
         GenFilter: @local::GenFilter
    }
 }
-
 
 EventGenerator : { @table::EventGenerator
     producers : {
@@ -397,7 +395,6 @@ EventGenerator : { @table::EventGenerator
         CaloTBGun : {
             module_type    : CaloTBGun
         }
-
 
         positronGun : { @table::EventGeneratorMu
 #------------------------------------------------------------------------------
