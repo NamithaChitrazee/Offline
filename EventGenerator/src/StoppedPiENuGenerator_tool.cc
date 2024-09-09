@@ -25,6 +25,7 @@ namespace mu2e {
 
   private:
     PDGCode::type                       _pdgCode;
+    ProcessCode                         _processCode;
     double                              _mass;
     BinnedSpectrum                      _spectrum;
     std::unique_ptr<RandomUnitSphere>   _randomUnitSphere;
@@ -35,20 +36,23 @@ namespace mu2e {
       using Name   = fhicl::Name;
       using Comment= fhicl::Comment;
 
-      fhicl::DelegatedParameter spectrum{Name("spectrum"), Comment("BinnedSpectrum parameters)")};
+      fhicl::DelegatedParameter spectrum   {Name("spectrum"   ), Comment("BinnedSpectrum parameters)")};
+      fhicl::Atom<std::string>  processCode{Name("processCode"), Comment("Mu2e process code"         )};
     };
     typedef art::ToolConfigTable<PhysConfig> Parameters;
 
     explicit StoppedPiEnuGenerator(Parameters const& conf) :
-      _pdgCode(PDGCode::e_plus),
       _mass(GlobalConstantsHandle<ParticleDataList>()->particle(_pdgCode).mass()),
       _spectrum(BinnedSpectrum(conf().spectrum.get<fhicl::ParameterSet>()))
-    {}
+    {
+      _pdgCode     = PDGCode::type(conf().spectrum.get<fhicl::ParameterSet>().get<int>("pdgCode"));
+      _processCode = ProcessCode::findByName(conf().processCode());
+    }
 
     std::vector<ParticleGeneratorTool::Kinematic> generate() override;
     void generate(std::unique_ptr<GenParticleCollection>& out, const IO::StoppedParticleF& stop) override;
 
-    virtual ProcessCode   processCode() override { return ProcessCode::mu2ePienu; }
+    virtual ProcessCode   processCode() override { return _processCode; }
 
     virtual void finishInitialization(art::RandomNumberGenerator::base_engine_t& eng, const std::string&) override {
       _randomUnitSphere = std::make_unique<RandomUnitSphere>(eng);
