@@ -87,6 +87,7 @@
 #include "Offline/ConfigTools/inc/ConfigFileLookupPolicy.hh"
 #include "Offline/GeometryService/inc/PTMMaker.hh"
 #include "Offline/PTMGeom/inc/PTM.hh"
+#include "Offline/GeometryService/inc/DUSAFMu2eConverter.hh"
 
 using namespace std;
 
@@ -336,6 +337,10 @@ namespace mu2e {
       addDetector(std::move(ptmon));
     }
 
+    if(_config->getBool("hasSTM",false)){
+      STMMaker stm( *_config, beamline.solenoidOffset() );
+      addDetector( stm.getSTMPtr() );
+    }
 
     if(_config->getBool("hasVirtualDetector",false)){
       addDetector(VirtualDetectorMaker::make(*_config));
@@ -355,11 +360,9 @@ namespace mu2e {
       addDetector( mecopam.getMECOStyleProtonAbsorberPtr() );
     }
 
-    if(_config->getBool("hasSTM",false)){
-      STMMaker stm( *_config, beamline.solenoidOffset() );
-      addDetector( stm.getSTMPtr() );
-    }
-
+    // This class has a default c'tor with all available information internally.
+    std::unique_ptr<DUSAFMu2eConverter> dusafMu2e{ std::make_unique<DUSAFMu2eConverter>() };
+    addDetector( std::move(dusafMu2e) );
 
   } // preBeginRun()
 
