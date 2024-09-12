@@ -66,8 +66,8 @@ namespace mu2e {
 
     explicit ParticleGunMu(Parameters const& conf);
 
-    std::vector<ParticleGeneratorTool::Kinematic> generate() override;
-    void generate(std::unique_ptr<GenParticleCollection>& out, const IO::StoppedParticleF& stop);
+    virtual std::vector<Kinematic> generate();
+    virtual void generate(std::unique_ptr<GenParticleCollection>& out, const IO::StoppedParticleF& stop);
 
     virtual GenId         genId      () override { return GenId::particleGun; }
     virtual ProcessCode   processCode() override { return _processCode; }

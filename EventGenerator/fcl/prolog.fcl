@@ -175,6 +175,7 @@ EventGeneratorMu : { module_type : "EventGeneratorMu"
     tmax            : 1700
     lifetime        : 1.e10                ## stopped mu+ lifetime
     verbosityLevel  : 0
+    makeHistograms  : 0
     generator       : { }                  ## to be defined
 }
 
