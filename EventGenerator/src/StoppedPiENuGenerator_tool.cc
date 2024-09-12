@@ -30,27 +30,34 @@ namespace mu2e {
     BinnedSpectrum                      _spectrum;
     std::unique_ptr<RandomUnitSphere>   _randomUnitSphere;
     std::unique_ptr<CLHEP::RandGeneral> _randSpectrum;
+    double                              _czmin;
+    double                              _czmax;
 
   public:
     struct PhysConfig {
       using Name   = fhicl::Name;
       using Comment= fhicl::Comment;
 
-      fhicl::DelegatedParameter spectrum   {Name("spectrum"   ), Comment("BinnedSpectrum parameters)")};
-      fhicl::Atom<std::string>  processCode{Name("processCode"), Comment("Mu2e process code"         )};
+      fhicl::DelegatedParameter spectrum   {Name("spectrum"   ), Comment("BinnedSpectrum parameters)")   };
+      fhicl::Atom<std::string>  processCode{Name("processCode"), Comment("Mu2e process code"         )   };
+      fhicl::Atom<double>       czmin      {Name("czmin"     ), Comment("cos(theta) min"            ),-1};
+      fhicl::Atom<double>       czmax      {Name("czmax"     ), Comment("cos(theta) max"            ), 1};
     };
     typedef art::ToolConfigTable<PhysConfig> Parameters;
 
     explicit StoppedPiEnuGenerator(Parameters const& conf) :
       _mass(GlobalConstantsHandle<ParticleDataList>()->particle(_pdgCode).mass()),
-      _spectrum(BinnedSpectrum(conf().spectrum.get<fhicl::ParameterSet>()))
-    {
+      _spectrum(BinnedSpectrum(conf().spectrum.get<fhicl::ParameterSet>())),
+      _czmin       (conf().czmin       ()),
+      _czmax       (conf().czmax       ())
+   {
       _pdgCode     = PDGCode::type(conf().spectrum.get<fhicl::ParameterSet>().get<int>("pdgCode"));
       _processCode = ProcessCode::findByName(conf().processCode());
     }
 
-    std::vector<ParticleGeneratorTool::Kinematic> generate() override;
-    void generate(std::unique_ptr<GenParticleCollection>& out, const IO::StoppedParticleF& stop) override;
+    virtual std::vector<ParticleGeneratorTool::Kinematic> generate() override;
+
+    virtual void generate(std::unique_ptr<GenParticleCollection>& out, const IO::StoppedParticleF& stop) override;
 
     virtual ProcessCode   processCode() override { return _processCode; }
 
@@ -66,10 +73,18 @@ namespace mu2e {
 
     double e = _spectrum.sample(_randSpectrum->fire());
     double p = sqrt(e*e -_mass*_mass);
-    CLHEP::HepLorentzVector fourmom(_randomUnitSphere->fire(p),e);
-
-    ParticleGeneratorTool::Kinematic k{_pdgCode, ProcessCode::mu2ePienu, fourmom};
-    res.emplace_back(k);
+//-----------------------------------------------------------------------------
+// for now, just check the cos(theta)
+//-----------------------------------------------------------------------------
+    while (1) {
+      CLHEP::HepLorentzVector fourmom(_randomUnitSphere->fire(p),e);
+      double cz = fourmom.pz()/p;
+      if ((cz >= _czmin) and (cz <= _czmax)) {
+        Kinematic k{_pdgCode, ProcessCode::mu2ePienu, fourmom};
+        res.emplace_back(k);
+        break;
+      }
+    }
 
     return res;
   }

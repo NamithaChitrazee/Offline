@@ -31,6 +31,8 @@
 #include "art/Framework/Services/Registry/ServiceHandle.h"
 #include "art/Utilities/make_tool.h"
 
+#include "art_root_io/TFileService.h"
+
 #include "Offline/SeedService/inc/SeedService.hh"
 #include "Offline/GlobalConstantsService/inc/GlobalConstantsHandle.hh"
 #include "Offline/GlobalConstantsService/inc/PhysicsParams.hh"
@@ -38,6 +40,9 @@
 #include "Offline/MCDataProducts/inc/StageParticle.hh"
 #include "Offline/Mu2eUtilities/inc/simParticleList.hh"
 #include "Offline/EventGenerator/inc/ParticleGeneratorTool.hh"
+
+#include "TFile.h"
+#include "TH1F.h"
 
 namespace mu2e {
 //================================================================
@@ -54,6 +59,7 @@ namespace mu2e {
       fhicl::Atom<art::InputTag> simpCollTag   {Name("simpCollTag"   ),Comment("input SimParticleCollection")};
       fhicl::DelegatedParameter  generator     {Name("generator"     ),Comment("generator tool"             )};
       fhicl::Atom<int>           verbosityLevel{Name("verbosityLevel"),Comment("verbosity Level"            )};
+      fhicl::Atom<int>           makeHistograms{Name("makeHistograms"),Comment("1:make histograms, 0:dont"  )};
     };
 
     using Parameters = art::EDProducer::Table<Config>;
@@ -73,6 +79,13 @@ namespace mu2e {
     std::unique_ptr<CLHEP::RandFlat>           _randFlat   ;
     std::unique_ptr<ParticleGeneratorTool>     _generator  ;
     int                                        _verbosityLevel;
+    int                                        _makeHistograms;
+
+    struct Hist_t {
+      TH1F* energy;
+      TH1F* time;
+      TH1F* cosz;
+    } _hist;
   };
 
 //================================================================
@@ -85,6 +98,7 @@ namespace mu2e {
     , _randExp     (std::make_unique<CLHEP::RandExponential>(_eng))
     , _randFlat    (std::make_unique<CLHEP::RandFlat>       (_eng))
     , _verbosityLevel(conf().verbosityLevel())
+    , _makeHistograms(conf().makeHistograms())
   {
     _stopPdgCode = static_cast<PDGCode::type>(conf().stopPdgCode());
 
@@ -106,6 +120,14 @@ namespace mu2e {
       mf::LogInfo log("EventGeneratorMu");
       log << ", lifetime = " << _lifetime << std::endl;
     }
+
+    if (_makeHistograms ) {
+      art::ServiceHandle<art::TFileService> tfs;
+      art::TFileDirectory tfdir = tfs->mkdir("EventGeneratorMu");
+      _hist.energy = tfdir.make<TH1F>( "energy", "energy", 200,  0.,  200.);
+      _hist.time   = tfdir.make<TH1F>( "time"  , "time"  , 200,  0.,  2000.);
+      _hist.cosz   = tfdir.make<TH1F>( "cosz"  , "cosz"  , 200, -1.,  1.  );
+    }
   }
 
 //-----------------------------------------------------------------------------
@@ -115,6 +137,8 @@ namespace mu2e {
 // practice of passing vectors by value is sprawling
 //-----------------------------------------------------------------------------
     std::vector<art::Ptr<SimParticle>> list;
+    std::vector<ParticleGeneratorTool::Kinematic> daughters;
+    double                             decay_time(-1);
 
     if (not _simpCollTag.empty()) {
       art::Handle<SimParticleCollection> simpch;
@@ -139,11 +163,11 @@ namespace mu2e {
 // for the antiptoton annihilation, will set the _lifetime to zero
 //-----------------------------------------------------------------------------
       for(const auto& stop: list) {
-        double decay_time = stop->endGlobalTime()+_randExp->fire(_lifetime);
+        decay_time = stop->endGlobalTime()+_randExp->fire(_lifetime);
 //-----------------------------------------------------------------------------
 // re-package daughters into a list of "stage particles"
 //-----------------------------------------------------------------------------
-        auto daughters = _generator->generate();
+        daughters = _generator->generate();
         for(const auto& d: daughters) {
           output->emplace_back(stop                     ,
                                _generator->processCode(),
@@ -210,7 +234,7 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
 // if _tmax < _tmin, decay_time=_tmin
 //-----------------------------------------------------------------------------
-        double decay_time = _tmin;
+        decay_time = _tmin;
         if (_tmax > _tmin) {
           if (_lifetime < 0) {
 //-----------------------------------------------------------------------------
@@ -229,7 +253,7 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
 // re-package daughters into a list of "stage particles"
 //-----------------------------------------------------------------------------
-        auto daughters = _generator->generate();
+        daughters = _generator->generate();
         for(const auto& d: daughters) {
           genpc->push_back(GenParticle(d.pdgId,_generator->genId(),stop->endPosition(),d.fourmom,decay_time));
         }
@@ -238,6 +262,14 @@ namespace mu2e {
 
     if(_verbosityLevel >= 9) {
       std::cout<<"EventGeneratorMu output: "<<*output<<std::endl;
+    }
+
+    if (_makeHistograms) {
+      for(const auto& d: daughters) {
+        _hist.energy->Fill(d.fourmom.e());
+        _hist.time->Fill(decay_time);
+        _hist.cosz->Fill(d.fourmom.cosTheta());
+      }
     }
 
     event.put(std::move(output));
