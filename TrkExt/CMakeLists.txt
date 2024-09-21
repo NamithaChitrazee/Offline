@@ -12,6 +12,7 @@ cet_make_library(
     LIBRARIES PUBLIC
       art_root_io::TFileService_service
       
+      Offline::BeamlineGeom
       Offline::BFieldGeom
       Offline::BTrkData
       Offline::ConfigTools
@@ -20,7 +21,6 @@ cet_make_library(
       Offline::GeneralUtilities
       Offline::GeometryService
       Offline::MCDataProducts
-      Offline::MECOStyleProtonAbsorberGeom
       Offline::RecoDataProducts
       Offline::StoppingTargetGeom
 )

@@ -33,6 +33,9 @@ namespace mu2e {
     double                              _czmin;
     double                              _czmax;
 
+    enum SpectrumVar  { TOTAL_ENERGY, KINETIC_ENERGY, MOMENTUM };
+    SpectrumVar                         _var;
+
   public:
     struct PhysConfig {
       using Name   = fhicl::Name;
@@ -40,20 +43,28 @@ namespace mu2e {
 
       fhicl::DelegatedParameter spectrum   {Name("spectrum"   ), Comment("BinnedSpectrum parameters)")   };
       fhicl::Atom<std::string>  processCode{Name("processCode"), Comment("Mu2e process code"         )   };
-      fhicl::Atom<double>       czmin      {Name("czmin"     ), Comment("cos(theta) min"            ),-1};
-      fhicl::Atom<double>       czmax      {Name("czmax"     ), Comment("cos(theta) max"            ), 1};
+      fhicl::Atom<double>       czmin      {Name("czmin"      ), Comment("cos(theta) min"            ),-1};
+      fhicl::Atom<double>       czmax      {Name("czmax"      ), Comment("cos(theta) max"            ), 1};
     };
     typedef art::ToolConfigTable<PhysConfig> Parameters;
 
     explicit StoppedPiEnuGenerator(Parameters const& conf) :
-      _mass(GlobalConstantsHandle<ParticleDataList>()->particle(_pdgCode).mass()),
       _spectrum(BinnedSpectrum(conf().spectrum.get<fhicl::ParameterSet>())),
       _czmin       (conf().czmin       ()),
       _czmax       (conf().czmax       ())
    {
       _pdgCode     = PDGCode::type(conf().spectrum.get<fhicl::ParameterSet>().get<int>("pdgCode"));
       _processCode = ProcessCode::findByName(conf().processCode());
-    }
+      _mass        = GlobalConstantsHandle<ParticleDataList>()->particle(_pdgCode).mass();
+
+      std::string v = conf().spectrum.get<fhicl::ParameterSet>().get<std::string>("spectrumVariable");
+      if      (v == "totalEnergy"  )  _var = TOTAL_ENERGY;
+      else if (v == "kineticEnergy")  _var = KINETIC_ENERGY;
+      else if (v == "momentum"     )  _var = MOMENTUM;
+      else {
+        throw cet::exception("BADCONFIG") << "StoppedPiEnuGenerator::generate: unknown var name "<< v << "\n";
+      }
+   }
 
     virtual std::vector<ParticleGeneratorTool::Kinematic> generate() override;
 
@@ -71,8 +82,20 @@ namespace mu2e {
   std::vector<ParticleGeneratorTool::Kinematic> StoppedPiEnuGenerator::generate() {
     std::vector<ParticleGeneratorTool::Kinematic>  res;
 
-    double e = _spectrum.sample(_randSpectrum->fire());
-    double p = sqrt(e*e -_mass*_mass);
+    double e(0), p(0);
+
+    if (_var == TOTAL_ENERGY) {
+      e = _spectrum.sample(_randSpectrum->fire());
+      p = sqrt(e*e -_mass*_mass);
+    }
+    else if (_var == MOMENTUM) {
+      p = _spectrum.sample(_randSpectrum->fire());
+      e = sqrt(p*p +_mass*_mass);
+    }
+    else if (_var == KINETIC_ENERGY) {
+      e = _mass + _spectrum.sample(_randSpectrum->fire());
+      p = sqrt(e*e -_mass*_mass);
+    }
 //-----------------------------------------------------------------------------
 // for now, just check the cos(theta)
 //-----------------------------------------------------------------------------

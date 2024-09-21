@@ -82,7 +82,9 @@ namespace mu2e {
     int                                        _makeHistograms;
 
     struct Hist_t {
-      TH1F* energy;
+      TH1F* etot[2];
+      TH1F* ekin[2];
+      TH1F* mom [2];
       TH1F* time;
       TH1F* cosz;
     } _hist;
@@ -124,9 +126,14 @@ namespace mu2e {
     if (_makeHistograms ) {
       art::ServiceHandle<art::TFileService> tfs;
       art::TFileDirectory tfdir = tfs->mkdir("EventGeneratorMu");
-      _hist.energy = tfdir.make<TH1F>( "energy", "energy", 200,  0.,  200.);
-      _hist.time   = tfdir.make<TH1F>( "time"  , "time"  , 200,  0.,  2000.);
-      _hist.cosz   = tfdir.make<TH1F>( "cosz"  , "cosz"  , 200, -1.,  1.  );
+      _hist.etot[0]  = tfdir.make<TH1F>( "etot_0", "etot[0]", 200,  0.,  200.);
+      _hist.etot[1]  = tfdir.make<TH1F>( "etot_1", "etot[1]", 200,  0., 2000.);
+      _hist.ekin[0]  = tfdir.make<TH1F>( "ekin_0", "ekin[0]", 200,  0.,  200.);
+      _hist.ekin[1]  = tfdir.make<TH1F>( "ekin_1", "ekin[1]", 200,  0., 2000.);
+      _hist.mom [0]  = tfdir.make<TH1F>( "mom_0" , "mom [0]", 200,  0.,  200.);
+      _hist.mom [1]  = tfdir.make<TH1F>( "mom_1" , "mom [1]", 200,  0., 2000.);
+      _hist.time     = tfdir.make<TH1F>( "time"  , "time"   , 200,  0., 2000.);
+      _hist.cosz     = tfdir.make<TH1F>( "cosz"  , "cosz"   , 200, -1.,  1.  );
     }
   }
 
@@ -266,7 +273,19 @@ namespace mu2e {
 
     if (_makeHistograms) {
       for(const auto& d: daughters) {
-        _hist.energy->Fill(d.fourmom.e());
+        double m      = d.fourmom.m();
+        double etot   = d.fourmom.e();
+        _hist.etot[0]->Fill(etot);
+        _hist.etot[1]->Fill(etot);
+
+        double ekin = etot - m;
+        _hist.ekin[0]->Fill(ekin);
+        _hist.ekin[1]->Fill(ekin);
+
+        double mom = sqrt(etot*etot-m*m);
+        _hist.mom[0]->Fill(mom);
+        _hist.mom[1]->Fill(mom);
+
         _hist.time->Fill(decay_time);
         _hist.cosz->Fill(d.fourmom.cosTheta());
       }
