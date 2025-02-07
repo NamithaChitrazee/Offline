@@ -35,6 +35,7 @@
 #include "Offline/Mu2eUtilities/inc/ModuleHistToolBase.hh"
 #include "art/Utilities/make_tool.h"
 #include "Offline/Mu2eUtilities/inc/polyAtan2.hh"
+#include "Offline/Mu2eUtilities/inc/HelixTool.hh"
 
 #include "TVector2.h"
 #include "TSystem.h"
