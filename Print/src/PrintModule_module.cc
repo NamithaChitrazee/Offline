@@ -260,10 +260,10 @@ mu2e::PrintModule::PrintModule(const Parameters& conf) : art::EDAnalyzer(conf),
 
 void mu2e::PrintModule::analyze(art::Event const& event) {
   if(_printevent) {
-    cout << "\n"
-      << " ###############  PrintModule Run/Subrun/Event " << setw(9)
-      << event.run() << setw(9) << event.subRun() << setw(9) << event.event()
-      << endl;
+    //cout << "\n"
+    //  << " ###############  PrintModule Run/Subrun/Event " << setw(9)
+    //  << event.run() << setw(9) << event.subRun() << setw(9) << event.event()
+    //  << endl;
 
     for (auto& prod_printer : _printers) prod_printer->Print(event);
 

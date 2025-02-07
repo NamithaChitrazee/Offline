@@ -1,4 +1,3 @@
-
 #include "Offline/Print/inc/SimParticlePrinter.hh"
 #include "Offline/DataProducts/inc/PDGCode.hh"
 #include "art/Framework/Principal/Provenance.h"
@@ -45,10 +44,22 @@ void mu2e::SimParticlePrinter::Print(
 void mu2e::SimParticlePrinter::Print(const SimParticleCollection& coll,
                                      std::ostream& os) {
   if (verbose() < 1) return;
-  os << "SimParticleCollection has " << coll.size() << " particles\n";
+  //os << "SimParticleCollection has " << coll.size() << " particles\n";
   if (verbose() == 1) PrintListHeader();
-  int i = 0;
-  for (const auto& obj : coll) Print(obj.second, i++, obj.first.asUint());
+  //int i = 0;
+  for (const auto& obj : coll) {
+    //Print(obj.second, i++, obj.first.asUint());
+    //if(obj.second.endMomentum().vect().mag() > 20) os<< "Positive momentum = " << obj.second.endMomentum().vect().mag() << " PDG = "<< obj.second.pdgId() << "creation = "<<obj.second.creationCode().name()<<" start = "<<obj.second.startPosition().x()<<" y = "<<obj.second.startPosition().y()<<" z = "<<obj.second.startPosition().z()<<" end = "<<obj.second.endPosition().x()<<" z = "<<obj.second.endPosition().z()<<"\n";
+    //if((obj.second.pdgId() == 11 or obj.second.pdgId() == -11) and obj.second.startMomentum().vect().mag() > 20){
+    //  art::Ptr<SimParticle> const& pptr = obj.second.parent();
+    //  os<<"pdg = "<<obj.second.pdgId()<<" parent = "<<pptr->pdgId()<<" momentum = "<<obj.second.startMomentum().vect().mag()<<std::endl;
+    //}
+    //art::Ptr<SimParticle> const& pptr = obj.second.parent();
+    //if(obj.second.pdgId() == -211 or obj.second.pdgId() == 211 or obj.second.pdgId() == 111)
+    if(obj.second.pdgId() != -2212)
+      os<<"PDG = "<<obj.second.pdgId()<<" x = "<<obj.second.startPosition().x()<<" y = "<<obj.second.startPosition().y()<<" z = "<<obj.second.startPosition().z()<<" time = "<<obj.second.startGlobalTime()<<" end x = "<<obj.second.endPosition().x()<<" y = "<<obj.second.endPosition().y()<<" z= "<<obj.second.endPosition().z()<<std::endl;
+    //if(obj.second.pdgId() == 11 and obj.second.startMomentum().vect().mag() > 80) os<<"PDG = "<<obj.second.pdgId()<<" Positive momentum = " << obj.second.startMomentum().vect().mag() << " x = "<<obj.second.startPosition().x()<<" y = "<<obj.second.startPosition().y()<<" z = "<<obj.second.startPosition().z()<<" end x = "<<obj.second.endPosition().x()<<" y = "<<obj.second.endPosition().y()<<" z = "<<obj.second.endPosition().z()<<std::endl;
+  }
 }
 
 void mu2e::SimParticlePrinter::Print(const art::Ptr<SimParticle>& obj, int ind,
@@ -70,7 +81,7 @@ void mu2e::SimParticlePrinter::Print(const mu2e::SimParticle& obj, int ind,
   art::Ptr<SimParticle> const& pptr = obj.parent();
   int pkey = -1;
   if (pptr) pkey = int(pptr.key());
-
+  std::cout<<"parent = "<<pkey<<std::endl;
   art::Ptr<GenParticle> const& gptr = obj.genParticle();
   std::string gid("none");
   if (gptr) gid = gptr->generatorId().name();
@@ -101,7 +112,7 @@ void mu2e::SimParticlePrinter::Print(const mu2e::SimParticle& obj, int ind,
        << "  "
        << " " << std::setiosflags(std::ios::left) << obj.stoppingCode().name()
        << std::endl;
-  } else if (verbose() == 2) {
+  } else if (verbose() == 3) {
     os << "  id: " << std::setw(8) << key << " pdgId: " << std::setw(4)
        << obj.pdgId() << " parentKey: " << std::setw(8) << pkey
        << " genId: " << std::setiosflags(std::ios::left) << gid << "\n";
@@ -150,7 +161,7 @@ void mu2e::SimParticlePrinter::Print(const mu2e::SimParticle& obj, int ind,
 void mu2e::SimParticlePrinter::PrintHeader(const std::string& tag,
                                            std::ostream& os) {
   if (verbose() < 1) return;
-  os << "\nProductPrint " << tag << "\n";
+  //os << "\nProductPrint " << tag << "\n";
 }
 
 void mu2e::SimParticlePrinter::PrintListHeader(std::ostream& os) {

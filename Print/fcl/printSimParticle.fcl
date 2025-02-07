@@ -18,7 +18,7 @@ physics :{
     printModule : {
       module_type : PrintModule
       simParticlePrinter : {
-        verbose : 2
+        verbose : 3
         pCut : 0.0
       }
     } # printModule
@@ -26,7 +26,7 @@ physics :{
 
   }  # analyzers
 
-  ana       : [ printModule, printProductList ]
+  ana       : [ printModule] # , printProductList ]
   end_paths : [ ana ]
 
 }
