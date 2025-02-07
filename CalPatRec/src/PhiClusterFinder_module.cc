@@ -309,7 +309,6 @@ namespace mu2e {
           _clustno.clear();
           break;
         }
-        //std::cout<<"count used hit = "<<countusedhit<<std::endl;
         //Total phi and no. of hits in a cluster
         if (phi1 !=0) {
           _phitotal[counter] = phi1;
@@ -321,12 +320,9 @@ namespace mu2e {
     }
     if(counter > 1){
       for(int k = 0; k<counter; k++){
-        //std::cout<<"phi = "<<_phitotal[k]<<" nhits = "<<_nhitotal[k]<<std::endl;
         if((k+1) <= counter){
           float dphi2 = fabs(_phitotal[k]/_nhitotal[k]-_phitotal[k+1]/_nhitotal[k+1]);
           if (dphi2 > M_PI) dphi2 = 2*M_PI-dphi2;
-          if(counter == 2 and dphi2 > 0) std::cout<<"dphi2 = "<<dphi2<<std::endl;
-          //std::cout<<"nhits = "<<_nhitotal[k]<<" k + 1 = "<<_nhitotal[k+1]<<std::endl;
           if(dphi2 < _mindphi and dphi2 > 0){
              TimeCluster tc;
              for(int ih=0; ih<nh; ih++) {
@@ -391,42 +387,6 @@ namespace mu2e {
            tccol1.push_back(tc);
       }
     }
-    // phi separation between the clusters. Note : Only used for the events with two phi clusters at the moment
-    /*if (counter == 2) {
-      dphi = fabs(_phitotal[0]/_nhitotal[0]-_phitotal[1]/_nhitotal[1]);
-      if (dphi > M_PI) dphi = 2*M_PI-dphi;
-      std::cout<<"dphi = "<<dphi<<std::endl;
-    }
-    // Loop through the phi clusters and form time clusters
-    for(int j=0;j<counter;j++){
-       TimeCluster tc;
-       for(int ih=0; ih<nh; ih++) {
-        //Fill the straw hit indices if the cluster number of the hit == j
-        if (_clustno[ih]==j) tc._strawHitIdxs.push_back(ordchcol[ih]);
-       }
-       initCluster(tc);
-       if (_debug > 1) {
-         int nsh = tc._nsh;
-         printf("Time cluster : %i No. straw hits : %i \n",counter,nsh);
-       }
-       // Sigma of the phi spectrum
-       float sigma(0);
-       if (tc._nsh >= _minnsh) {
-         if (tc._nsh > _nphiclusters) {
-           sigma = checkdelta(tc, j, ordchcol);
-           // if (_debug>2 and sigma>0) std::cout<<"Phi cluster sigma = "<<sigma<<" n straw hits = "<<tc._nsh<<" n combo hits = "<<tc._strawHitIdxs.size()<<std::endl;
-         }
-         if (sigma == 0 or sigma > _minsigma) {
-           if (counter == 2){
-             if (dphi >= _mindphi)
-               tccol1.push_back(tc);
-           }
-           else tccol1.push_back(tc);
-         }
-          // if(_debug>1) std::cout<<"Delta phi = "<<dphi<<" T0 = "<<tc._t0._t0<<" n straw hits = "<<tc._nsh<<"n combo hits = "<<tc._strawHitIdxs.size()<<std::endl;
-       }
-       // if(_debug>2) std::cout<<"No. of time clusters = "<<counter<<" T0 = "<<tc._t0._t0<<" n straw hits = "<<tc._nsh<<" n combo hits = "<<tc._strawHitIdxs.size()<<std::endl;
-    }*/
   }
 
 //------------------------------------------------------------------------------
@@ -435,7 +395,6 @@ namespace mu2e {
   void PhiClusterFinder::clusterminmax(float& cluphimin, float& cluphimax) {
     int   nbx = _hist1.GetNbinsX();
     float bin = _hist1.GetBinWidth(0);
-    //std::cout<<"nbx = "<<nbx<<" bin width = "<<bin<<std::endl;
     int nsteps(0);
     int max_bin  = _hist1.GetMaximumBin();
     // Check to the left of the peak bin
