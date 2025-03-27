@@ -140,7 +140,7 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
     fNHits         += Seed->nHits();
     fNStrawHits    += Seed->nStrawHits();
-    fNHighEDepHits += Seed->nStrawHits();
+    fNHighEDepHits += Seed->nHighEDepHits();
     fSumEDep       += Seed->SumEDep();
 
     fSnx2          += Seed->fSnx2;
