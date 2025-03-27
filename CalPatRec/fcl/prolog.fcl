@@ -308,7 +308,7 @@ CalPatRec : { @table::CalPatRec
             addhits                                     : true
             ComboHitCollection                          : makeSH
             StrawDigiCollection                         : makeSD
-            StrawHitFlagCollection                      : "DeltaFinder:StrawHits"
+            #StrawHitFlagCollection                      : "DeltaFinder:StrawHits"
             SeedCollection                              : CalSeedFit
             CaloClusterCollection                       : "CaloClusterMaker"
             mcDigiCollTag                               : "dave,_it_is_used_only_when_debugging_MC._pasha"
@@ -439,7 +439,7 @@ CalPatRec : { @table::CalPatRec
         DeltaFinderAna : { module_type:DeltaFinderAna
             chCollTag              : "DeltaFinder"           ## "makePH"                # use combo hits
             shCollTag              : "makeSH"                # assume StrawHits have been written out
-            sschCollTag            : "DeltaFinder:StrawHits" ## "makeSH"                # 1-straw combohits
+            sschCollTag            : "makeSH" ## "DeltaFinder:StrawHits" ## "makeSH"                # 1-straw combohits
             sdmcCollTag            : "compressDigiMCs"
             debugLevel             : 0
             diagLevel              : 0
@@ -701,7 +701,8 @@ CalPatRec : { @table::CalPatRec
             debugLevel                                  : 0
             printFrequency                              : 100
             useAsFilter                                 : 0
-            StrawHitCollectionLabel                     : makePH            # CalTimePeakFinder uses ComboHits
+#            StrawHitCollectionLabel                     : makePH            # CalTimePeakFinder uses ComboHits
+            StrawHitCollectionLabel                     : "FlagBkgHits"      # CalTimePeakFinder uses ComboHits
             StrawHitFlagCollectionLabel                 : ShouldNotBeUsed
             caloClusterModuleLabel                      : CaloClusterMaker
 #            HitSelectionBits                            : []
@@ -727,8 +728,8 @@ CalPatRec : { @table::CalPatRec
             debugLevel                                  : 0
             printFrequency                              : 100
             useAsFilter                                 : 0
-            StrawHitCollectionLabel                     : makePH
-            StrawHitFlagCollectionLabel                 : "DeltaFinder:ComboHits"
+            StrawHitCollectionLabel                     : "FlagBkgHits"
+#            StrawHitFlagCollectionLabel                 : "DeltaFinder:ComboHits"
             TimeClusterCollectionLabel                  : CalTimePeakFinder
             minNHitsTimeCluster                         : @local::CalPatRec.minNStrawHits
             fitparticle                                 : @local::Particle.eminus
