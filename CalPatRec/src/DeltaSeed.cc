@@ -44,6 +44,7 @@ namespace mu2e {
     fHitData[face0]         = Hd0;
     fChi21                  = Hd0->fChi2Min;
 
+    fNHighEDepHits          = 0;
     if (Hd1) {
       fHitData[face1]       = Hd1;
       fType                 =  10*face0+face1;

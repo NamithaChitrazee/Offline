@@ -17,6 +17,7 @@ namespace mu2e {
     _maxSeedEDep           (config().maxSeedEDep()      ),
     _minProtonSeedEDep     (config().minProtonSeedEDep()),
     _minProtonHitEDep      (config().minProtonHitEDep ()),
+    _minNHighEDepHitsProton(config().minNHighEDepHitsProton()),
     _minNSeeds             (config().minNSeeds()        ),
     _minDeltaNHits         (config().minDeltaNHits()    ),
     _maxEleHitEnergy       (config().maxEleHitEnergy()  ),
@@ -339,7 +340,7 @@ namespace mu2e {
 // check whether there already is a seed containing both hits
 //-----------------------------------------------------------------------------
           int is_duplicate  = checkDuplicates(Station,Face,hd1,f2,hd2);
-          if (is_duplicate)                               continue;
+          if (is_duplicate)                                           continue;
 //-----------------------------------------------------------------------------
 // new seed : an intersection of two wires coresponsing to close in time combo hits
 //-----------------------------------------------------------------------------
@@ -352,7 +353,7 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
 // mark both hits as a part of a seed, so they would not be used individually
 // - see HitData_t::Used()
-//-----------------------------------------------------------------------------
+    //-----------------------------------------------------------------------------
           hd1->fSeed  = seed;
           hd2->fSeed  = seed;
 //-----------------------------------------------------------------------------
@@ -375,10 +376,24 @@ namespace mu2e {
 // lists of proton and compton seeds are not mutually exclusive -
 // some (3 keV < EDep < 5 keV) could be either
 //-----------------------------------------------------------------------------
-            if (seed->EDep() > _maxSeedEDep)        seed->fGood = -2000-seed->fIndex;
-            else                                   _data->AddComptonSeed(seed,Station);
+            int n_high_edep_hits(0);
+            for (int face=0; face<kNFaces; face++) {
+              HitData_t* hit = seed->HitData(face);
+              if (hit and (hit->fHit->energyDep() > _minProtonHitEDep)) n_high_edep_hits++;
+            }
+            seed->SetNHighEDepHits(n_high_edep_hits);
 
-            if (seed->EDep() > _minProtonSeedEDep) _data->AddProtonSeed (seed,Station);
+            if (seed->EDep() > _maxSeedEDep)        seed->fGood = -2000-seed->fIndex;
+            else {
+              _data->AddComptonSeed(seed,Station);
+            }
+
+            if ((seed->EDep() > _minProtonSeedEDep) and (n_high_edep_hits >= 2)) {
+//-----------------------------------------------------------------------------
+// make sure the number of proton-like hits, hits above proton E(min) is at least two
+//-----------------------------------------------------------------------------
+              _data->AddProtonSeed (seed,Station);
+            }
 
             seed_found = seed->nHits();
           }
