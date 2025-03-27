@@ -10,6 +10,7 @@
 #include <iterator>
 #include <iostream>
 #include <cmath>
+#include <numeric>
 
 #include "cetlib_except/exception.h"
 
@@ -51,12 +52,20 @@ namespace mu2e {
       col._alignmentPlugRadius = d2r(tmp);
     }
 
+    c.getVectorDouble("extMonFNAL."+name+".alignmentPlugInnerShellThickness", col._alignmentPlugInnerShellThickness, 2);
+    c.getVectorDouble("extMonFNAL."+name+".alignmentPlugOuterShellThickness", col._alignmentPlugOuterShellThickness, 2);
+
     {
       std::vector<double> tmp;
-      c.getVectorDouble("extMonFNAL."+name+".alignmentHoleDiameter", tmp, 2);
-      col._alignmentHoleRadius = d2r(tmp);
+      c.getVectorDouble("extMonFNAL."+name+".shotLinerInnerDiameter", tmp, 2);
+      col._shotLinerInnerRadius = d2r(tmp);
     }
 
+    c.getVectorDouble("extMonFNAL."+name+".shotLinerInnerThickness", col._shotLinerInnerThickness, 2);
+
+    col._shotLinerOuterRadius = c.getDouble("extMonFNAL."+name+".shotLinerOuterDiameter")/2;
+    col._shotLinerOuterThickness = c.getDouble("extMonFNAL."+name+".shotLinerOuterThickness");
+    col._length = c.getDouble("extMonFNAL."+name+".length");
     col._radiusTransitiondZ = c.getDouble("extMonFNAL."+name+".radiusTransitiondZ");
     col._angleH = angleH;
     col._angleV = angleV;
@@ -77,15 +86,17 @@ namespace mu2e {
 
     // Get relevant Hall solid
     ExtrudedSolid extMonRoomWall = hall.getBldgSolid("extMonExteriorWall");
+    ExtrudedSolid extMonRoomWallE = hall.getBldgSolid("extMonExteriorWallE");
     const CLHEP::Hep3Vector& offset = extMonRoomWall.getOffsetFromMu2eOrigin();
     // Get corner coordinates of extinction monitor room
     const auto & roomVertices = extMonRoomWall.getVertices();
+    const auto & roomVerticesE = extMonRoomWallE.getVertices();
     const double xfront = roomVertices[0][1]+offset[0];
     const double zfront = roomVertices[0][0]+offset[2];
     const double xback = roomVertices[1][1]+offset[0];
     const double zback = roomVertices[1][0]+offset[2];
-    const double xScorner = roomVertices[9][1]+offset[0];
-    const double zScorner = roomVertices[9][0]+offset[2];
+    const double xScorner = roomVerticesE[1][1]+offset[0];
+    const double zScorner = roomVerticesE[1][0]+offset[2];
     const double roomLength = sqrt((zfront-zback)*(zfront-zback)+(xfront-xback)*(xfront-xback));
     const double roomWidth = sqrt((zfront-zScorner)*(zfront-zScorner)+(xfront-xScorner)*(xfront-xScorner));
 
@@ -108,6 +119,15 @@ namespace mu2e {
     emfb->coll2ShieldingOutline_.emplace_back(zfront+dzdL*magnetRoomLength-shieldwidth*dxdL,
                                               xfront+dxdL*magnetRoomLength+shieldwidth*dzdL);
 
+    //----------------------------------------------------------------
+    static CLHEP::HepRotation shieldingRot(CLHEP::HepRotation::IDENTITY);
+    shieldingRot.rotateX( 90*CLHEP::degree);
+    shieldingRot.rotateZ( 90*CLHEP::degree);
+
+    emfb->coll2ShieldingRotationInMu2e_ = shieldingRot;
+    emfb->coll2ShieldingCenterInMu2e_ = CLHEP::Hep3Vector(0, (emfb->roomInsideYmin()+emfb->roomInsideYmax())/2.0, 0);
+    //----------------------------------------------------------------
+
     emfb->magnetRoomLength_ = magnetRoomLength;
 
     // hand stacked shielding sizes and locations in magnet room
@@ -118,12 +138,12 @@ namespace mu2e {
     emfb->shieldingNCenterInMu2e_[0] = xfront + (dxdL*steelLength + dzdL*steelwidthN)/2.0;
     emfb->shieldingNCenterInMu2e_[1] = emfb->roomInsideYmin_ + layerHeight/2.0;
     emfb->shieldingNCenterInMu2e_[2] = zfront + (dzdL*steelLength - dxdL*steelwidthN)/2.0;
-
-    emfb->shieldingSCenterInMu2e_[0] = xScorner + (dxdL*steelLength - dzdL*steelwidthS)/2.0;
+    const double safety_gap=0.1; // 100 microns
+    emfb->shieldingSCenterInMu2e_[0] = xScorner + (dxdL*steelLength - dzdL*steelwidthS)/2.0+safety_gap; // SDF add safety gap
     emfb->shieldingSCenterInMu2e_[1] = emfb->roomInsideYmin_ + layerHeight/2.0;
-    emfb->shieldingSCenterInMu2e_[2] = zScorner + (dzdL*steelLength + dxdL*steelwidthS)/2.0;
+    emfb->shieldingSCenterInMu2e_[2] = zScorner + (dzdL*steelLength + dxdL*steelwidthS)/2.0-7.*safety_gap; // SDF add safety gap
 
-    emfb->shieldingBCenterInMu2e_[0] = xfront + (dxdL*(magnetRoomLength+steelLength) + dzdL*roomWidth)/2.0;
+    emfb->shieldingBCenterInMu2e_[0] = xfront + (dxdL*(magnetRoomLength+steelLength) + dzdL*roomWidth)/2.0+safety_gap; // SDF add safety gap
     emfb->shieldingBCenterInMu2e_[1] = emfb->roomInsideYmin_ + layerHeight/2.0;
     emfb->shieldingBCenterInMu2e_[2] = zfront + (dzdL*(magnetRoomLength+steelLength) - dxdL*roomWidth)/2.0;
 
@@ -138,7 +158,7 @@ namespace mu2e {
     emfb->shieldingSHalfSize_[2] = steelLength/2.0;
 
     emfb->shieldingBHalfSize_.resize(3);
-    emfb->shieldingBHalfSize_[0] = roomWidth/2.0;
+    emfb->shieldingBHalfSize_[0] = roomWidth/2.0-safety_gap;// SDF add safety gap
     emfb->shieldingBHalfSize_[1] = layerHeight/2.0;
     emfb->shieldingBHalfSize_[2] = (magnetRoomLength-steelLength)/2.0-2;
 
@@ -220,11 +240,24 @@ namespace mu2e {
                                                   entranceAngleV - 2 * emfb->_filterMagnet.trackBendHalfAngle(pNominal),
                                                   c);
 
-    const double col2CenterZdump = dump.coreCenterDistanceToShieldingFace()
-      - 2*dump.frontShieldingHalfSize()[2]
-      - emfb->magnetRoomLength_
-      - 0.5*emfb->_collimator2.horizontalLength()
-      ;
+    // We want to position the collimator inside the concrete created from
+    // the "coll2ShieldingOutline_" above.    The outline vertices
+    // are coordinates in the Mu2e (z,x) plane.   Find their 2D geometric
+    // center, then bring it into 3D and convert from Mu2e to dump system coordinates.
+
+    const auto coll2cog2d = std::accumulate(emfb->coll2ShieldingOutline_.begin(),
+                                            emfb->coll2ShieldingOutline_.end(),
+                                            Hep2Vector(0,0))
+      / emfb->coll2ShieldingOutline_.size();
+
+    // point in Mu2e coordinates
+    const Hep3Vector coll2cog3d = Hep3Vector(coll2cog2d.y(), 0, coll2cog2d.x())
+      + emfb->coll2ShieldingCenterInMu2e_ ;
+
+    // point in dump coordinates
+    const auto coll2cogInDump = dump.mu2eToBeamDump_position(coll2cog3d);
+
+    const double col2CenterZdump = coll2cogInDump.z();
 
     const double col2CenterXdump = magnetRefInDump[0]
       +  (magnetRefInDump[2] - col2CenterZdump)*tan(emfb->filterAngleH());
@@ -262,14 +295,6 @@ namespace mu2e {
       std::cout<<"ExtMonFNALBuildingMaker"<<": ExtMonFNALBuilding::filterEntranceInMu2e() = "<<emfb->filterEntranceInMu2e()<<std::endl;
       std::cout<<"ExtMonFNALBuildingMaker"<<": ExtMonFNALBuilding::filterExitInMu2e() = "<<emfb->filterExitInMu2e()<<std::endl;
     }
-    //----------------------------------------------------------------
-
-    static CLHEP::HepRotation shieldingRot(CLHEP::HepRotation::IDENTITY);
-    shieldingRot.rotateX( 90*CLHEP::degree);
-    shieldingRot.rotateZ( 90*CLHEP::degree);
-
-    emfb->coll2ShieldingRotationInMu2e_ = shieldingRot;
-    emfb->coll2ShieldingCenterInMu2e_ = CLHEP::Hep3Vector(0, (emfb->roomInsideYmin()+emfb->roomInsideYmax())/2.0, 0);
 
     //----------------------------------------------------------------
     // Detector room box

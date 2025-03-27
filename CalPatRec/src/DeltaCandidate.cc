@@ -4,8 +4,10 @@
 namespace mu2e {
 //-----------------------------------------------------------------------------
     DeltaCandidate::DeltaCandidate() :
-      fSnx2(0), fSnxy(0), fSny2(0),fSnxr(0),fSnyr(0),
-      fSt(0), fSz(0), fSt2(0), fStz(0), fSz2(0)
+      fNx(0.f), fNy(0.f), fSumEDep(0.f),
+      fSnx2(0.), fSnxy(0.), fSny2(0.),fSnxr(0.),fSnyr(0.),
+      fSt(0.), fSz(0.), fSt2(0.), fStz(0.), fSz2(0.),
+      fT0(0.), fDtDz(0.), fSigT0(0.)
     {
       fIndex  = -1;
       for(int s=0; s<kNStations; ++s) {
@@ -23,8 +25,7 @@ namespace mu2e {
 
 //-----------------------------------------------------------------------------
     DeltaCandidate::DeltaCandidate(int Index, DeltaSeed* Seed) :
-      fSnx2(0), fSnxy(0), fSny2(0),fSnxr(0),fSnyr(0),
-      fSt(0), fSz(0), fSt2(0), fStz(0), fSz2(0)
+      DeltaCandidate()
     {
       fIndex  = Index;
       for(int s=0; s<kNStations; ++s) {
@@ -38,7 +39,7 @@ namespace mu2e {
       fNHighEDepHits = 0;
       fNSeeds        = 0;
       fSumEDep       = 0;
-
+        
       if (Seed) AddSeed(Seed);
     }
 

@@ -44,6 +44,12 @@ cet_build_plugin(AntiProtonGun art::module
       Offline::SeedService
 )
 
+cet_build_plugin(AntiprotonResampling art::module
+    REG_SOURCE src/AntiprotonResampling_module.cc
+    LIBRARIES REG
+      Offline::EventGenerator
+)
+
 cet_build_plugin(CaloCalibGun art::module
     REG_SOURCE src/CaloCalibGun_module.cc
     LIBRARIES REG
@@ -129,6 +135,12 @@ cet_build_plugin(DecayInOrbitWeight art::module
       Offline::MCDataProducts
       Offline::Mu2eUtilities
       Offline::SeedService
+)
+
+cet_build_plugin(deltaFunctionGun art::module
+    REG_SOURCE src/deltaFunctionGun_module.cc
+    LIBRARIES REG
+        Offline::EventGenerator
 )
 
 cet_build_plugin(EplusFromStoppedPion art::module
@@ -274,6 +286,12 @@ cet_build_plugin(GammaConvFlat art::module
       Offline::EventGenerator
 )
 
+cet_build_plugin(GammaConversion art::module
+    REG_SOURCE src/GammaConversion_module.cc
+    LIBRARIES REG
+      Offline::EventGenerator
+)
+
 cet_build_plugin(GeneratorPlots art::module
     REG_SOURCE src/GeneratorPlots_module.cc
     LIBRARIES REG
@@ -358,6 +376,12 @@ cet_build_plugin(Pileup art::module
       Offline::SeedService
 )
 
+cet_build_plugin(PionFilter art::module
+    REG_SOURCE src/PionFilter_module.cc
+    LIBRARIES REG
+      Offline::EventGenerator
+)
+
 cet_build_plugin(PrimaryAntiProtonGun art::module
     REG_SOURCE src/PrimaryAntiProtonGun_module.cc
     LIBRARIES REG
@@ -417,6 +441,12 @@ cet_build_plugin(RPCGun art::module
       Offline::MCDataProducts
       Offline::Mu2eUtilities
       Offline::SeedService
+)
+
+cet_build_plugin(SimpleAntiprotonGun art::module
+    REG_SOURCE src/SimpleAntiprotonGun_module.cc
+    LIBRARIES REG
+      Offline::EventGenerator
 )
 
 cet_build_plugin(SingleProcessGenerator art::module
@@ -566,6 +596,16 @@ cet_build_plugin(MuCapProtonGenerator art::tool
       Offline::Mu2eUtilities
 )
 
+cet_build_plugin(MuStopDecayPositionSamplerTool art::tool
+    REG_SOURCE src/MuStopDecayPositionSamplerTool_tool.cc
+    LIBRARIES REG
+      Offline::EventGenerator      
+
+      Offline::GlobalConstantsService
+      Offline::MCDataProducts
+      Offline::Mu2eUtilities
+)
+
 cet_build_plugin(MuplusMichelGenerator art::tool
     REG_SOURCE src/MuplusMichelGenerator_tool.cc
     LIBRARIES REG
@@ -575,6 +615,12 @@ cet_build_plugin(MuplusMichelGenerator art::tool
       Offline::GlobalConstantsService
       Offline::MCDataProducts
       Offline::Mu2eUtilities
+)
+
+cet_build_plugin(RMCGenerator art::tool
+    REG_SOURCE src/RMCGenerator_tool.cc
+    LIBRARIES REG
+      Offline::EventGenerator
 )
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/fcl/prolog.fcl ${CURRENT_BINARY_DIR} fcl/prolog.fcl)

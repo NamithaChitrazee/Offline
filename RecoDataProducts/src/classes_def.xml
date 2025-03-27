@@ -142,6 +142,7 @@
  <class name="TrkT0"/>   <!-- BTrk -->
  <class name="mu2e::HitT0"/>
  <class name="mu2e::RobustHelix"/>
+ <class name="mu2e::HelixRecoDir"/>
  <class name="mu2e::HelixSeed"/>
  <class name="mu2e::HelixSeedCollection" />
  <class name="art::Ptr<mu2e::HelixSeed>"/>
@@ -203,17 +204,15 @@
  <class name="std::vector<mu2e::KalSegment>"/>
  <class name="KinKal::IntersectFlag"/>
  <class name="KinKal::Intersection"/>
- <class name="mu2e::SurfaceIdDetail"/>
- <class name="mu2e::SurfaceIdEnum"/>
- <class name="mu2e::SurfaceId"/>
  <class name="mu2e::KalIntersection"/>
  <class name="mu2e::KalIntersectionCollection"/>
 
  <class name="mu2e::KalSeed"/>
  <class name="mu2e::KalSeedCollection"/>
- <class name="art::Ptr<mu2e::KalSeed>"/>
- <class name="std::vector<art::Ptr<mu2e::KalSeed> >"/>
+ <class name="mu2e::KalSeedPtr"/>
+ <class name="mu2e::KalSeedPtrCollection"/>
  <class name="art::Wrapper<mu2e::KalSeedCollection>"/>
+ <class name="art::Wrapper<mu2e::KalSeedPtrCollection>"/>
 
  <class name="mu2e::KalHelixAssns" />
  <class name="art::Wrapper<mu2e::KalHelixAssns>"/>
@@ -324,6 +323,13 @@
  <class name="mu2e::CrvDigiCollection" />
  <class name="art::Wrapper<mu2e::CrvDigiCollection>" />
 
+ <class name="mu2e::CrvDAQerrorCodeDetail"/>
+ <class name="mu2e::CrvDAQerrorCode"/>
+ <class name="mu2e::CrvDAQerror" />
+ <class name="std::vector<mu2e::CrvDAQerror>" />
+ <class name="mu2e::CrvDAQerrorCollection" />
+ <class name="art::Wrapper<mu2e::CrvDAQerrorCollection>" />
+
  <class name="mu2e::CrvRecoPulseFlags" />
  <class name="mu2e::CrvRecoPulse" />
  <class name="art::Ptr<mu2e::CrvRecoPulse>"/>
@@ -341,6 +347,20 @@
  <class name="std::vector<mu2e::CrvCoincidenceCluster>" />
  <class name="mu2e::CrvCoincidenceClusterCollection" />
  <class name="art::Wrapper<mu2e::CrvCoincidenceClusterCollection>" />
+
+<!--  checksum from file->ShowStreamerInfo() -->
+<ioread sourceClass="mu2e::CrvDigi"
+        source="std::array<int16_t,8> _ADCs"
+        checksum="[3596926525]"
+        targetClass="mu2e::CrvDigi"
+        target="_ADCs, _NZS"
+        include="array, vector">
+<![CDATA[
+  _ADCs.resize(onfile._ADCs.size());
+  for(size_t i=0; i<onfile._ADCs.size(); ++i) _ADCs[i]=onfile._ADCs[i];
+  _NZS=false;
+]]>
+</ioread>
 
 <!--  ********* ExtMon  ********* -->
  <class name="mu2e::ExtMonFNALRawHit" />
@@ -395,6 +415,13 @@
  <class name="mu2e::AHist<uint16_t,70>"/>
  <class name="mu2e::RecoCount"/>
  <class name="art::Wrapper<mu2e::RecoCount>"/>
+
+ <class name="mu2e::DAQerrorCodeDetail"/>
+ <class name="mu2e::DAQerrorCode"/>
+ <class name="mu2e::DAQerror" />
+ <class name="std::vector<mu2e::DAQerror>" />
+ <class name="mu2e::DAQerrorCollection" />
+ <class name="art::Wrapper<mu2e::DAQerrorCollection>" />
 
 <!--  ********* STM ********* -->
  <class name="mu2e::STMWaveformDigi"/>
