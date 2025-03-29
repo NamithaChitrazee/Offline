@@ -307,13 +307,18 @@ namespace mu2e {
     for (int i=0; i<npc; i++) {
       ProtonCandidate* pc = _data.protonCandidate(i);
       if (pc->nHitsTot() >= 15) np15++;
+//-----------------------------------------------------------------------------
+// seeds could have accidentally attached hits, so require a "good" proton.deutron
+// candidate to have the number of hits with high energy deposition above _minProtonNHighEDepHits
+//-----------------------------------------------------------------------------
+      if (pc->nHighEDepHits() < _finder->minNHighEDepHitsProton())    continue;
       if (pc->nStationsWithHits() == 1) {
 //-----------------------------------------------------------------------------
 // for proton candidates with just one station require eDep > 4 KeV
 // this adds a little inefficiency for proton reco,
 // but reduces overefficiency of flagging the CE hits
 //-----------------------------------------------------------------------------
-        if (pc->eDep() < 0.004) continue;
+        if (pc->eDep() < 0.004)                                       continue;
       }
       for (int is=pc->fFirstStation; is<=pc->fLastStation; is++) {
         for (int face=0; face<kNFaces; face++) {

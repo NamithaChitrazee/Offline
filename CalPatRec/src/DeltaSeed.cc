@@ -7,7 +7,6 @@ namespace mu2e {
   using  CalPatRec::HitData_t;
 
   float DeltaSeed::fSigT2 = 8*8;    // resolution in tCorr, squared, ns^2
-
 //-----------------------------------------------------------------------------
 // 'Hd1' could be nullptr - this is the case when a single hit is picked up
 // in a station based on a prediction made from another station
@@ -44,6 +43,7 @@ namespace mu2e {
     fHitData[face0]         = Hd0;
     fChi21                  = Hd0->fChi2Min;
 
+    fNHighEDepHits          = 0;
     if (Hd1) {
       fHitData[face1]       = Hd1;
       fType                 =  10*face0+face1;

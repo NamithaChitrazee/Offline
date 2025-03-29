@@ -4,21 +4,23 @@
 namespace mu2e {
 //-----------------------------------------------------------------------------
     DeltaCandidate::DeltaCandidate() :
-      fNx(0.f), fNy(0.f), fSumEDep(0.f),
-      fSnx2(0.), fSnxy(0.), fSny2(0.),fSnxr(0.),fSnyr(0.),
-      fSt(0.), fSz(0.), fSt2(0.), fStz(0.), fSz2(0.),
+      fNx(0), fNy(0),
+      fSnx2(0), fSnxy(0), fSny2(0),fSnxr(0),fSnyr(0),
+      fSt(0), fSz(0), fSt2(0), fStz(0), fSz2(0),
       fT0(0.), fDtDz(0.), fSigT0(0.)
     {
       fIndex  = -1;
-      fMask         = 0;
-      fFirstStation = 999;
-      fLastStation  =  -1;
       for(int s=0; s<kNStations; ++s) {
         fSeed   [s] = nullptr;
       }
-      fNHits        = 0;
-      fNStrawHits   = 0;
-      fNSeeds       = 0;
+      fMask          = 0;
+      fFirstStation  = 999;
+      fLastStation   =  -1;
+      fNSeeds        = 0;
+      fNHits         = 0;
+      fNStrawHits    = 0;
+      fNHighEDepHits = 0;
+      fSumEDep       = 0;
     }
 
 //-----------------------------------------------------------------------------
@@ -40,9 +42,10 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
 // general case: the 'seed' needs to be removed
 //-----------------------------------------------------------------------------
-    fNSeeds       -= 1;
-    fNHits        -= seed->nHits();
-    fNStrawHits   -= seed->nStrawHits();
+    fNSeeds        -= 1;
+    fNHits         -= seed->nHits();
+    fNStrawHits    -= seed->nStrawHits();
+    fNHighEDepHits -= seed->nHighEDepHits();
 //-----------------------------------------------------------------------------
 // update the first and the last station numbers
 //-----------------------------------------------------------------------------
@@ -124,19 +127,20 @@ namespace mu2e {
 // seeds with SFace(1) < 0 don't have their center of gravity defined - their hits
 // have been picked up individually, the intersection doesn't matter
 //-----------------------------------------------------------------------------
-    fNHits      += Seed->nHits();
-    fNStrawHits += Seed->nStrawHits();
-    fSumEDep    += Seed->SumEDep();
+    fNHits         += Seed->nHits();
+    fNStrawHits    += Seed->nStrawHits();
+    fNHighEDepHits += Seed->nHighEDepHits();
+    fSumEDep       += Seed->SumEDep();
 
-    fSnx2       += Seed->fSnx2;
-    fSnxy       += Seed->fSnxy;
-    fSny2       += Seed->fSny2;
-    fSnxr       += Seed->fSnxr;
-    fSnyr       += Seed->fSnyr;
+    fSnx2          += Seed->fSnx2;
+    fSnxy          += Seed->fSnxy;
+    fSny2          += Seed->fSny2;
+    fSnxr          += Seed->fSnxr;
+    fSnyr          += Seed->fSnyr;
 
-    double d     = fSnx2*fSny2-fSnxy*fSnxy;
-    double xc    = (fSnyr*fSnx2-fSnxr*fSnxy)/d;
-    double yc    = (fSnyr*fSnxy-fSnxr*fSny2)/d;
+    double d        = fSnx2*fSny2-fSnxy*fSnxy;
+    double xc       = (fSnyr*fSnx2-fSnxr*fSnxy)/d;
+    double yc       = (fSnyr*fSnxy-fSnxr*fSny2)/d;
 
     CofM.SetX(xc);
     CofM.SetY(yc);
@@ -196,6 +200,7 @@ namespace mu2e {
       fNSeeds               += 1;
       fNHits                += fSeed[is]->nHits();
       fNStrawHits           += fSeed[is]->nStrawHits();
+      fNHighEDepHits        += fSeed[is]->nHighEDepHits();
       fSumEDep              += fSeed[is]->SumEDep();
 
       if (fFirstStation > is) fFirstStation = is;

@@ -10,11 +10,11 @@ namespace mu2e {
 
   using DeltaFinderTypes::PhiPrediction_t;
 
-    struct ProtonCandidate {
-      enum  {
-        kEDepBit   = 0x00000001, // <<  0
-        kNHitsBit  = 0x00000002
-      };
+  struct ProtonCandidate {
+    enum  {
+      kEDepBit   = 0x00000001, // <<  0
+      kNHitsBit  = 0x00000002
+    };
 
     public:
       int                     fIndex;                 // >= 0: index, <0: -1000-index merged
@@ -33,7 +33,7 @@ namespace mu2e {
       int                     fNStationsWithHits;
       int                     fNHitsTot;           // total N(combo hits)
       int                     fNStrawHitsTot;      // total N(straw hits)
-
+      int                     fNHighEDepHits;
                                                    // LSQ sumz for TZ
       double                  fSt;
       double                  fSz;
@@ -57,7 +57,9 @@ namespace mu2e {
 //
 //-----------------------------------------------------------------------------
       ProtonCandidate(int Index);
-      ProtonCandidate() : ProtonCandidate(0) {}
+                                        // default constructor should never be called
+
+      ProtonCandidate() : ProtonCandidate(1) {}
 
       void       init                 ();
 
@@ -75,6 +77,7 @@ namespace mu2e {
 
       int        NHitsMcP             () const { return fNHitsMcP; }
       int        nStrawHitsTot        () const { return fNStrawHitsTot; }
+      int        nHighEDepHits        () const { return fNHighEDepHits; }
 
       float      minHitTime(int Station) const { return fMinHitTime[Station]; }
       float      maxHitTime(int Station) const { return fMaxHitTime[Station]; }

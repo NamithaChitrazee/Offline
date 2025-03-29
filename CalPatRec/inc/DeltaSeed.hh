@@ -31,6 +31,7 @@ namespace mu2e {
     int          fGood;             // <killer number> if not to be used - what about 0 ?
     int          fNHits;            // total number of combo hits
     int          fNStrawHits;       // total number of straw hits
+    int          fNHighEDepHits;    // number of combohits with eDep > _minProtonHitEDep
 
     int          fSFace[2];         // faces making the stereo seed
     float        fChi21;            // chi2's of the two initial hits, also stored in hit data
@@ -64,18 +65,7 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
 // constructors and destructor
 //-----------------------------------------------------------------------------
-    DeltaSeed() : fIndex(0), fStation(0), fType(0), fGood(0), fNHits(0), fNStrawHits(0), fChi21(0.f), fChi22(0.f),
-                  fSnx2(0.), fSnxy(0.), fSnxr(0.), fSnyr(0.), fSumEDep(0.f), fZ(0.f), fSumT(0.f), fSumT2(0.f),
-                  fMinHitTime(0.f), fMaxHitTime(0.f), fDeltaIndex(0), fProtonIndex(0), fChi2Par(0.f), fChi2Perp(0.f)
-    {
-      fSFace[0] = 0; fSFace[1] = 0;
-      for(int face = 0; face < kNFaces; ++face) {
-        fFaceProcessed[face] = 0;
-        fHitData      [face] = nullptr;
-      }
-    }
-
-    DeltaSeed(int Index) : DeltaSeed() { fIndex = Index; }
+    DeltaSeed (int Index) { fIndex = Index; }
 
     ~DeltaSeed() {}
 
@@ -101,6 +91,7 @@ namespace mu2e {
     HitData_t*       HitData (int Face) { return fHitData[Face]; } // no boundary check !
     int              nHits   ()         { return fNHits; }
     int              nStrawHits()       { return fNStrawHits; }
+    int              nHighEDepHits()    { return fNHighEDepHits; }
 
     float            SumEDep ()         { return fSumEDep ; }
     float            EDep    ()         { return fSumEDep/fNStrawHits ; }
@@ -135,9 +126,10 @@ namespace mu2e {
       return fHitData[fSFace[0]]->fCorrTime-fHitData[fSFace[1]]->fCorrTime;
     }
 
-    void             SetStation    (int Station) { fStation     = Station; }
-    void             SetDeltaIndex (int Index  ) { fDeltaIndex  = Index  ; }
-    void             setProtonIndex(int Index  ) { fProtonIndex = Index  ; }
+    void             SetStation      (int Station) { fStation       = Station; }
+    void             SetDeltaIndex   (int Index  ) { fDeltaIndex    = Index  ; }
+    void             SetNHighEDepHits(int N      ) { fNHighEDepHits = N      ; }
+    void             setProtonIndex  (int Index  ) { fProtonIndex   = Index  ; }
 //-----------------------------------------------------------------------------
 // less trivial functions .. HitData_t knows its ZFace
 //-----------------------------------------------------------------------------
