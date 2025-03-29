@@ -93,8 +93,6 @@ namespace mu2e {
       Pzz_t                   fPanel [3];
       double                  z = 0.;           //
 
-      FaceZ_t();
-
       Pzz_t*                  Panel   (int I) { return &fPanel[I]; }
       int                     nHits        () { return fHitData.size(); }
       int                     nProtonHits  () { return fProtonHitData.size(); }
