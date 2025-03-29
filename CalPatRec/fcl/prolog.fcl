@@ -84,55 +84,6 @@ CalPatRec : { @table::CalPatRec
         minArea                                 : 5000.
     }
 #------------------------------------------------------------------------------
-# KalFitHack configuration for the KFF fits
-# I don't think it is used, CalTrkFit is using CPRKFFinal
-# first comment out, one month later - remove
-#------------------------------------------------------------------------------
-#     KalFitHack : {
-#         debugLevel                              : 0
-#         materialCorrection                      : true
-#         mingap                                        : 1.0
-#         ambiguityStrategy                            : [ 4    , 4    , 4    , 4   , 4    , 4    , 4    , 4   , 4    ]
-#         hiterr                                         : [ 80.  , 24.  , 8.   , 4.  , 2.   , 0.8  , 0.0  , 0.0 , 0.0  ]
-#         t0Tolerance                                : [ 2.0  , 1.0  , 1.0  , 1.0 , 0.5  , 0.5  , 0.2  , 0.2 , 0.1  ]
-#         weedhits                                : [ true , true , true , true, true , true , true , true, true ]
-#         # did Dave mean that?
-#         AddMaterial                                : [ false, false, false, true, false, false, false, true, true ]
-#         initT0                                        : true
-#         updateT0                                : [ false, true, true, true, true, true, true, true, true ]
-#         T0UpdateMode                            : 1
-#         HitAmbigPenalty                         : false
-#         HitMinDrift                                : 0.2
-#         DivergeFlt                              : 1000.
-#         RdriftMinusDocaTol                      : 1.
-#         ZeroDriftPenalty                         : 0.05
-#         Neutralize                                 : true
-# #------------------------------------------------------------------------------
-# #  KalContext parameters  (there are more to define ! )
-# #------------------------------------------------------------------------------
-#         MinNDOF                                 : 10 # this means 15 hits min
-# #------------------------------------------------------------------------------
-# # ambiguity resolver parameters
-# #------------------------------------------------------------------------------
-#         FixedAmbigResolver                      : {}
-#         HitAmbigResolver                        : {}
-#         PocaAmbigResolver                       : {}
-#         PanelAmbigResolver                      : {}
-# #------------------------------------------------------------------------------
-# # doublet-based ambiguity resolver parameters
-# #------------------------------------------------------------------------------
-#         DoubletAmbigResolver                    : { @table::TrkReco.DoubletAmbigResolver }
-#         fieldCorrection                                : true
-#         maxhitchi                               : 3.5
-#         dtOffset                                : @local::TrackCaloMatching.DtOffset
-#         scaleErrDoublet                         : 5.
-#         #        iLoopUseDoublets                        : 9
-#         minDriftDoublet                         : 0.3
-#         deltaDriftDoublet                       : 0.3
-#         sigmaSlope                              : 0.025
-#         makeStrawHitModuleLabel                 : makeSH
-#     }
-#------------------------------------------------------------------------------
 # SeedFitter(SeedFitHackNew) configuration for the final track fit
 # referenced by CalSeedFitter configurations below
 #------------------------------------------------------------------------------
@@ -348,31 +299,6 @@ CalPatRec : { @table::CalPatRec
             ]
         }
 
-        CalTrkFit          : {   module_type : KalFinalFit
-            diagLevel                                   : 0
-            debugLevel                                  : 0
-            printFrequency                              : 100
-            cprmode                                     : 1
-            addhits                                     : true
-            ComboHitCollection                          : makeSH
-            StrawDigiCollection                         : makeSD
-            StrawHitFlagCollection                      : "DeltaFinder:StrawHits"
-            SeedCollection                              : CalSeedFit
-            CaloClusterCollection                       : "CaloClusterMaker"
-            mcDigiCollTag                               : "dave,_it_is_used_only_when_debugging_MC._pasha"
-            DtMaxMiss                                   : 55.
-            MaxAddDoca                                  : 5.    # mm
-            MaxAddChi                                   : 5.    # 3.5 used by unweedHits and addHits
-            GoodKalSeedFitBits                          : ["SeedOK"]
-            fitparticle                                 : @local::Particle.eminus
-            fitdirection                                : @local::FitDir.downstream
-            KalFit                                      : { @table::CalPatRec.CprKFFinal }
-            AddHitBackgroundBits                        : ["Dead"]
-            diagPlugin : { tool_type  : "KalFinalFitDiag"
-                mcTruth       : 0
-                mcUtils       : { @table::TrkReco.McUtils }
-    }
-        }
 #------------------------------------------------------------------------------
         MergeHelixFinder : { module_type:MergeHelixFinder
             diagLevel                    : 0
@@ -413,9 +339,10 @@ CalPatRec : { @table::CalPatRec
                 maximumTime             : 1750.                 # ns, used
                 maxDeltaEDep            : 0.004                 # max allowed delta eDep
                 maxSeedEDep             : 0.005                 # max allowed seed eDep
+                maxEleHitEnergy         : 0.0200                # [MeV] , 0.02 means: 'use all hits' (emax ~ 6 keV)
                 minProtonSeedEDep       : 0.003                 # min allowed proton seed eDep
                 minProtonHitEDep        : 0.003                 # min allowed proton hit  eDep
-                maxEleHitEnergy         : 0.0200                # [MeV] , 0.02 means: 'use all hits' (emax ~ 6 keV)
+                minNHighEDepHitsProton  : 4                     # min number of high eDep hits on a proton candidate
 #------------------------------------------------------------------------------
 # for moving upstream, the combination sigmaR=2.6 rCore=4.2 gives:
 #                     N(delta hits) : 98749 and N(conv hits) : 184
@@ -529,48 +456,12 @@ CalPatRec : { @table::CalPatRec
 # default configuration: DE
 # CalPatRec, so far, has been validated only for e-
 #------------------------------------------------------------------------------
-        CalSeedFit : { module_type:KalSeedFit
-            debugLevel                                  : 0
-            printFrequency                              : 100
-            ComboHitCollection                          : makeSH
-            SeedCollection                              : "CalHelixFinder"
-            MinNHits                                    : 10
-            MaxDoca                                     : 40.
-            FilterOutliers                              : true
-            FilterHelixOutliers                         : false
-            MaxAddDoca                                  : 7.    # mm
-            MaxAddChi                                   : 5.    # normalized unit
-            rescueHits                                  : 1
-            fitparticle                                 : @local::Particle.eminus
-            fitdirection                                : @local::FitDir.downstream
-            ParameterErrors                             : [10.0,0.05,0.001,10.0,0.05]
-            KalFit                                      : { @table::CalPatRec.KalSeedFitter }
-        }
-#------------------------------------------------------------------------------
         ComboHitFilter : { module_type : ComboHitFilter
             chCollTag                                   : "makePH"
             chfCollTag                                  : "DeltaFinder:ComboHits"
             sdmcCollTag                                 : "compressDigiMCs"
             simID                                       : -1                ##
             debugLevel                                  : 0
-        }
-#------------------------------------------------------------------------------
-        MHSeedFit : { module_type:KalSeedFit
-            debugLevel                                  : 0
-            printFrequency                              : 100
-            ComboHitCollection                          : makeSH
-            SeedCollection                              : MergeHelixFinder
-            MinNHits                                    : 10
-            MaxDoca                                     : 40.
-            FilterOutliers                              : true
-            FilterHelixOutliers                         : false
-            MaxAddDoca                                  : 7.    # mm
-            MaxAddChi                                   : 5.    # normalized unit
-            rescueHits                                  : 1
-            fitparticle                                 : @local::Particle.eminus
-            fitdirection                                : @local::FitDir.downstream
-            ParameterErrors                             : [10.0,0.05,0.001,10.0,0.05]
-            KalFit                                      : { @table::CalPatRec.KalSeedFitter }
         }
 
         MHFinderTprDe : { @table::CalPatRec.producers.MergeHelixFinder
@@ -692,7 +583,7 @@ CalPatRec : { @table::CalPatRec
              #TimeClusterCollection  : "TimeClusterFinderDmu"
              diag                   : 0
              debug                  : 0
-             minNSH                 : 5
+             minNSH                 : 10
              threshold              : 1 # 4
              nPhiClusters           : 40
              phiMin                 : 0.0
@@ -771,60 +662,10 @@ CalPatRec: { @table::CalPatRec
             fitparticle                : @local::Particle.muminus
             TimeClusterCollectionLabel : CalTimePeakFinderUmu
         }
-        CalSeedFitDe                   : { @table::CalPatRec.producers.CalSeedFit
-            SeedCollection             : "CalHelixFinderDe"
-        }
-        CalSeedFitUe                   : { @table::CalPatRec.producers.CalSeedFit
-            SeedCollection             : "CalHelixFinderUe"
-        }
-        CalSeedFitDm                   : { @table::CalPatRec.producers.CalSeedFit
-            fitparticle                : @local::Particle.muminus
-            SeedCollection             : "CalHelixFinderDmu"
-        }
-        CalSeedFitUm                   : { @table::CalPatRec.producers.CalSeedFit
-            fitparticle                : @local::Particle.muminus
-            SeedCollection             : "CalHelixFinderUmu"
-        }
 
-        MHSeedFitDe                    : { @table::CalPatRec.producers.MHSeedFit
-            SeedCollection             : MergeHelixFinderDe
-        }
-        MHSeedFitDm                    : { @table::CalPatRec.producers.MHSeedFit
-            fitparticle                : @local::Particle.muminus
-            SeedCollection             : MergeHelixFinderDm
-        }
-        CalTrkFitDe                    : { @table::CalPatRec.producers.CalTrkFit
-            SeedCollection             : CalSeedFitDe
-            CalTimePeakModuleLabel     : CalTimePeakFinder
-        }
-        CalTrkFitUe                    : { @table::CalPatRec.producers.CalTrkFit
-            SeedCollection             : CalSeedFitUe
-            CalTimePeakModuleLabel     : CalTimePeakFinder
-        }
-        CalTrkFitDm                    : { @table::CalPatRec.producers.CalTrkFit
-            fitparticle                : @local::Particle.muminus
-            SeedCollection             : CalSeedFitDm
-            CalTimePeakModuleLabel     : CalTimePeakFinderMu
-            StrawHitFlagCollection     : "DeltaFinderMu:StrawHits"
-        }
-        CalTrkFitUm                    : { @table::CalPatRec.producers.CalTrkFit
-            SeedCollection             : CalSeedFitUm
-            CalTimePeakModuleLabel     : CalTimePeakFinder
-        }
-    }
 #------------------------------------------------------------------------------
     filters : { @table::CalPatRec.filters
-        # CalHelixFinderDeP              : { @table::CalPatRec.filters.CalHelixFinder fitparticle: @local::Particle.eplus   }
-        # CalHelixFinderDmuP             : { @table::CalPatRec.filters.CalHelixFinder
-        #     fitparticle                   : @local::Particle.muplus
-        #     StrawHitFlagCollectionLabel   : "DeltaFinderMu:ComboHits"
-        #     TimeClusterCollectionLabel    : CalTimePeakFinderMu
-        # }
     }
 }
-
-CalPatRec.reco    : [ CalTimePeakFinder  , CalHelixFinder   , CalSeedFit  , CalTrkFit   ]
-CalPatRec.de_reco : [ CalTimePeakFinderDe, CalHelixFinderDe , CalSeedFitDe, CalTrkFitDe ]
-CalPatRec.dm_reco : [ CalTimePeakFinderMu, CalHelixFinderDmu, CalSeedFitDm, CalTrkFitDm ]
 
 END_PROLOG
