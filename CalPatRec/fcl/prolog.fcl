@@ -26,7 +26,6 @@ BEGIN_PROLOG
 #
 # yes, there is a circular dependence between the data products.
 # Dave runs several instances of the hit flagging modules for a reason
-#------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------
 # new format
 #------------------------------------------------------------------------------
@@ -662,6 +661,7 @@ CalPatRec: { @table::CalPatRec
             fitparticle                : @local::Particle.muminus
             TimeClusterCollectionLabel : CalTimePeakFinderUmu
         }
+    }
 
 #------------------------------------------------------------------------------
     filters : { @table::CalPatRec.filters
