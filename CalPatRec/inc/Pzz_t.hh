@@ -1,5 +1,7 @@
 ///////////////////////////////////////////////////////////////////////////////
-//
+// PM: there is no need for default initialization of this structure, in fact,
+//     in case of mis-use, "almost reasonable" default initialization,
+//     instead of helping, could make things even confusing
 ///////////////////////////////////////////////////////////////////////////////
 #ifndef __CalPatRec_inc_Pzz_hh__
 #define __CalPatRec_inc_Pzz_hh__

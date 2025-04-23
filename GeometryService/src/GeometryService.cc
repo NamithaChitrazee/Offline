@@ -251,7 +251,7 @@ namespace mu2e {
         //        std::cout << " adding Hayman in GeometryService" << std::endl;
         addDetector(PSShieldMaker::make(*_config, ps.psEndRefPoint(), prodTarget.haymanProdTargetPosition()));
           } else
-        {throw cet::exception("GEOM") << " " << __func__ << " illegal production target version specified in GeometryService_service = " << _config->getString("targetPS_model")  << std::endl;}
+        {throw cet::exception("GEOM") << " " << static_cast<char const*>(__func__) << " illegal production target version specified in GeometryService_service = " << _config->getString("targetPS_model")  << std::endl;}
 
 
 
@@ -267,6 +267,7 @@ namespace mu2e {
 
     // Make dirt based on Mu2e envelope
     Mu2eHallMaker::makeDirt( *tmphall.get(), *_g4GeomOptions, *_config, *mu2eEnv.get() );
+    Mu2eHallMaker::makeRotated( *tmphall.get(), *_g4GeomOptions, *_config, *mu2eEnv.get() );
     Mu2eHallMaker::makeTrapDirt( *tmphall.get(), *_g4GeomOptions, *_config, *mu2eEnv.get() );
 
     addDetector(std::move( tmphall ) );
@@ -356,8 +357,8 @@ namespace mu2e {
 
 
     if(_config->getBool("hasProtonAbsorber",false) && !_config->getBool("protonabsorber.isHelical", false) ){
-      ProtonAbsorberMaker mecopam( *_config, ds, target);
-      addDetector( mecopam.getProtonAbsorberPtr() );
+      ProtonAbsorberMaker pam( *_config, ds, target);
+      addDetector( pam.getProtonAbsorberPtr() );
     }
 
     // This class has a default c'tor with all available information internally.

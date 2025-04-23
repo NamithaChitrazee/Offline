@@ -80,7 +80,7 @@ namespace mu2e {
     enum { kMaxNTimeBins = 3000 };                     // with a 40ns bin, covers up to 120 us
 
     struct FaceZ_t {
-      int                     fID;                     // 3*face+panel, for pre-calculating overlaps
+      int                     fID = 0;                     // 3*face+panel, for pre-calculating overlaps
 
       std::vector<HitData_t>  fHitData;
       int                     fFirst [kMaxNTimeBins];   // ** FIXME - choose the USED max size based on the event type - on/off spill
@@ -91,7 +91,7 @@ namespace mu2e {
       int                     fPLast [kMaxNTimeBins];  //
 
       Pzz_t                   fPanel [3];
-      double                  z;           //
+      double                  z = 0.;           //
 
       Pzz_t*                  Panel   (int I) { return &fPanel[I]; }
       int                     nHits        () { return fHitData.size(); }

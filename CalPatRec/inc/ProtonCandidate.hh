@@ -57,6 +57,9 @@ namespace mu2e {
 //
 //-----------------------------------------------------------------------------
       ProtonCandidate(int Index);
+                                        // default constructor should never be called
+
+      ProtonCandidate() : ProtonCandidate(1) {}
 
       void       init                 ();
 

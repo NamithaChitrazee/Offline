@@ -13,7 +13,7 @@ namespace mu2e {
 
 namespace CalPatRec {
   struct HitData_t {
-    const mu2e::ComboHit*   fHit;
+    const mu2e::ComboHit*   fHit;            // parameters below do not need to be initialized in a meaningful way
     mu2e::DeltaSeed*        fSeed;           // nullptr if not associated...
     int                     fUsed;           // TBD
     int                     fZFace;          // z-ordered face (for printing)

@@ -12,6 +12,7 @@
 #include "art/Utilities/make_tool.h"
 #include "art_root_io/TFileService.h"
 #include "fhiclcpp/ParameterSet.h"
+#include "fhiclcpp/types/Sequence.h"
 
 #include "Offline/BFieldGeom/inc/BFieldManager.hh"
 #include "Offline/CalorimeterGeom/inc/Calorimeter.hh"
@@ -25,11 +26,14 @@
 #include "Offline/RecoDataProducts/inc/HelixSeed.hh"
 #include "Offline/RecoDataProducts/inc/StrawHitIndex.hh"
 #include "Offline/RecoDataProducts/inc/TimeCluster.hh"
+#include "Offline/RecoDataProducts/inc/TrkFitDirection.hh"
 #include "Offline/RecoDataProducts/inc/TrkFitFlag.hh"
+#include "Offline/RecoDataProducts/inc/HelixRecoDir.hh"
 
 #include "Offline/Mu2eUtilities/inc/LsqSums2.hh"
 #include "Offline/Mu2eUtilities/inc/LsqSums4.hh"
 #include "Offline/Mu2eUtilities/inc/polyAtan2.hh"
+#include "Offline/Mu2eUtilities/inc/HelixTool.hh"
 
 #include "Offline/Mu2eUtilities/inc/ModuleHistToolBase.hh"
 
@@ -45,47 +49,49 @@ namespace mu2e {
     struct Config {
       using Name = fhicl::Name;
       using Comment = fhicl::Comment;
-      fhicl::Atom<int>           diagLevel              {Name("diagLevel"            ), Comment("turn tool on or off"         )  };
-      fhicl::Atom<art::InputTag> chCollLabel            {Name("chCollLabel"          ), Comment("combo hit collection label"  )  };
-      fhicl::Atom<art::InputTag> tcCollLabel            {Name("tcCollLabel"          ), Comment("time cluster coll label"     )  };
-      fhicl::Atom<art::InputTag> ccCollLabel            {Name("ccCollLabel"          ), Comment("Calo Cluster coll label"     )  };
-      fhicl::Atom<bool>          findMultipleHelices    {Name("findMultipleHelices"  ), Comment("allow more than one helix"   )  };
-      fhicl::Atom<bool>          useStoppingTarget      {Name("useStoppingTarget"    ), Comment("allow in triplet candidates" )  };
-      fhicl::Atom<int>           intenseEventThresh     {Name("intenseEventThresh"   ), Comment("# of clusters threshold"     )  };
-      fhicl::Atom<int>           intenseClusterThresh   {Name("intenseClusterThresh" ), Comment("# of combo hits threshold"   )  };
-      fhicl::Atom<bool>          doIsolationFlag        {Name("doIsolationFlag"      ), Comment("to filter out isolated hits" )  };
-      fhicl::Atom<float>         isoRad                 {Name("isoRad"               ), Comment("for isolation cut"           )  };
-      fhicl::Atom<int>           isoMinHitsNear         {Name("isoMinHitsNear"       ), Comment("#hits threshold for iso cut" )  };
-      fhicl::Atom<bool>          doAverageFlag          {Name("doAverageFlag"        ), Comment("to average out hits or not"  )  };
-      fhicl::Atom<float>         minDistCut             {Name("minDistCut"           ), Comment("for averaging out points"    )  };
-      fhicl::Atom<float>         minTripletSeedZ        {Name("minTripletSeedZ"      ), Comment("minimum z for triplet seed"  )  };
-      fhicl::Atom<float>         minTripletDz           {Name("minTripletDz"         ), Comment("min Z dist btwn 2 trip pts"  )  };
-      fhicl::Atom<float>         maxTripletDz           {Name("maxTripletDz"         ), Comment("max Z dist btwn 2 trip pts"  )  };
-      fhicl::Atom<float>         minTripletDist         {Name("minTripletDist"       ), Comment("min XY dist btwn 2 trip pts" )  };
-      fhicl::Atom<float>         minTripletArea         {Name("minTripletArea"       ), Comment("triangle area of triplet"    )  };
-      fhicl::Atom<float>         maxSeedCircleResidual  {Name("maxSeedCircleResidual"), Comment("add hits to triplet circle"  )  };
-      fhicl::Atom<int>           minSeedCircleHits      {Name("minSeedCircleHits"    ), Comment("min hits to continue search" )  };
-      fhicl::Atom<float>         maxDphiDz              {Name("maxDphiDz"            ), Comment("used finding phi-z segment"  )  };
-      fhicl::Atom<float>         maxSeedLineGap         {Name("maxSeedLineGap"       ), Comment("used finding phi-z segment"  )  };
-      fhicl::Atom<float>         maxZWindow             {Name("maxZWindow"           ), Comment("used finding phi-z segment"  )  };
-      fhicl::Atom<int>           minLineSegmentHits     {Name("minLineSegmentHits"   ), Comment("used in findSeedPhiLines()"  )  };
-      fhicl::Atom<float>         segMultiplier          {Name("segMultiplier"        ), Comment("used in findSeedPhiLines()"  )  };
-      fhicl::Atom<float>         maxSegmentChi2         {Name("maxSegmentChi2"       ), Comment("used in findSeedPhiLines()"  )  };
-      fhicl::Atom<float>         max2PiAmbigResidual    {Name("max2PiAmbigResidual"  ), Comment("when 2pi resolving segment"  )  };
-      fhicl::Atom<float>         maxPhiZResidual        {Name("maxPhiZResidual"      ), Comment("when refining phi-z line"    )  };
-      fhicl::Atom<int>           minFinalSeedHits       {Name("minFinalSeedHits"     ), Comment("halt search if below thresh" )  };
-      fhicl::Atom<float>         maxCircleRecoverSigma  {Name("maxCircleRecoverSigma"), Comment("when doing final recovery"   )  };
-      fhicl::Atom<float>         maxLineRecoverSigma    {Name("maxLineRecoverSigma"  ), Comment("when doing final recovery"   )  };
-      fhicl::Atom<float>         caloClusterSigma       {Name("caloClusterSigma"     ), Comment("error assigned to calo clust")  };
-      fhicl::Atom<int>           minNHelixStrawHits     {Name("minNHelixStrawHits"   ),Comment("straw hit save threshold"     )  };
-      fhicl::Atom<int>           minNHelixComboHits     {Name("minNHelixComboHits"   ), Comment("combo hit save threshold"    )  };
-      fhicl::Atom<float>         minHelixPerpMomentum   {Name("minHelixPerpMomentum" ), Comment("min pt of helix"             )  };
-      fhicl::Atom<float>         maxHelixPerpMomentum   {Name("maxHelixPerpMomentum" ), Comment("max pt of helix"             )  };
-      fhicl::Atom<float>         minHelixMomentum       {Name("minHelixMomentum"     ), Comment("min momentum of helix"       )  };
-      fhicl::Atom<float>         maxHelixMomentum       {Name("maxHelixMomentum"     ), Comment("max momentum of helix"       )  };
-      fhicl::Atom<float>         chi2LineSaveThresh     {Name("chi2LineSaveThresh"   ), Comment("max chi2Dof for line"        )  };
-      fhicl::Atom<float>         maxEDepAvg             {Name("maxEDepAvg"           ), Comment("max avg edep of combohits"   )  };
-      fhicl::Atom<float>         maxNHitsRatio          {Name("maxNHitsRatio"        ), Comment("max ratio of seed hits"      )  };
+      fhicl::Atom<int>             diagLevel              {Name("diagLevel"            ), Comment("turn tool on or off"         )  };
+      fhicl::Atom<art::InputTag>   chCollLabel            {Name("chCollLabel"          ), Comment("combo hit collection label"  )  };
+      fhicl::Atom<art::InputTag>   tcCollLabel            {Name("tcCollLabel"          ), Comment("time cluster coll label"     )  };
+      fhicl::Atom<art::InputTag>   ccCollLabel            {Name("ccCollLabel"          ), Comment("Calo Cluster coll label"     )  };
+      fhicl::Atom<bool>            findMultipleHelices    {Name("findMultipleHelices"  ), Comment("allow more than one helix"   )  };
+      fhicl::Atom<bool>            useStoppingTarget      {Name("useStoppingTarget"    ), Comment("allow in triplet candidates" )  };
+      fhicl::Atom<int>             intenseEventThresh     {Name("intenseEventThresh"   ), Comment("# of clusters threshold"     )  };
+      fhicl::Atom<int>             intenseClusterThresh   {Name("intenseClusterThresh" ), Comment("# of combo hits threshold"   )  };
+      fhicl::Atom<bool>            doIsolationFlag        {Name("doIsolationFlag"      ), Comment("to filter out isolated hits" )  };
+      fhicl::Atom<float>           isoRad                 {Name("isoRad"               ), Comment("for isolation cut"           )  };
+      fhicl::Atom<int>             isoMinHitsNear         {Name("isoMinHitsNear"       ), Comment("#hits threshold for iso cut" )  };
+      fhicl::Atom<bool>            doAverageFlag          {Name("doAverageFlag"        ), Comment("to average out hits or not"  )  };
+      fhicl::Atom<float>           minDistCut             {Name("minDistCut"           ), Comment("for averaging out points"    )  };
+      fhicl::Atom<float>           minTripletSeedZ        {Name("minTripletSeedZ"      ), Comment("minimum z for triplet seed"  )  };
+      fhicl::Atom<float>           minTripletDz           {Name("minTripletDz"         ), Comment("min Z dist btwn 2 trip pts"  )  };
+      fhicl::Atom<float>           maxTripletDz           {Name("maxTripletDz"         ), Comment("max Z dist btwn 2 trip pts"  )  };
+      fhicl::Atom<float>           minTripletDist         {Name("minTripletDist"       ), Comment("min XY dist btwn 2 trip pts" )  };
+      fhicl::Atom<float>           minTripletArea         {Name("minTripletArea"       ), Comment("triangle area of triplet"    )  };
+      fhicl::Atom<float>           maxSeedCircleResidual  {Name("maxSeedCircleResidual"), Comment("add hits to triplet circle"  )  };
+      fhicl::Atom<int>             minSeedCircleHits      {Name("minSeedCircleHits"    ), Comment("min hits to continue search" )  };
+      fhicl::Atom<float>           maxDphiDz              {Name("maxDphiDz"            ), Comment("used finding phi-z segment"  )  };
+      fhicl::Atom<float>           maxSeedLineGap         {Name("maxSeedLineGap"       ), Comment("used finding phi-z segment"  )  };
+      fhicl::Atom<float>           maxZWindow             {Name("maxZWindow"           ), Comment("used finding phi-z segment"  )  };
+      fhicl::Atom<int>             minLineSegmentHits     {Name("minLineSegmentHits"   ), Comment("used in findSeedPhiLines()"  )  };
+      fhicl::Atom<float>           segMultiplier          {Name("segMultiplier"        ), Comment("used in findSeedPhiLines()"  )  };
+      fhicl::Atom<float>           maxSegmentChi2         {Name("maxSegmentChi2"       ), Comment("used in findSeedPhiLines()"  )  };
+      fhicl::Atom<float>           max2PiAmbigResidual    {Name("max2PiAmbigResidual"  ), Comment("when 2pi resolving segment"  )  };
+      fhicl::Atom<float>           maxPhiZResidual        {Name("maxPhiZResidual"      ), Comment("when refining phi-z line"    )  };
+      fhicl::Atom<int>             minFinalSeedHits       {Name("minFinalSeedHits"     ), Comment("halt search if below thresh" )  };
+      fhicl::Atom<float>           maxNHitsRatio          {Name("maxNHitsRatio"        ), Comment("max ratio of seed hits"      )  };
+      fhicl::Atom<float>           maxCircleRecoverSigma  {Name("maxCircleRecoverSigma"), Comment("when doing final recovery"   )  };
+      fhicl::Atom<float>           maxLineRecoverSigma    {Name("maxLineRecoverSigma"  ), Comment("when doing final recovery"   )  };
+      fhicl::Atom<float>           caloClusterSigma       {Name("caloClusterSigma"     ), Comment("error assigned to calo clust")  };
+      fhicl::Atom<int>             minNHelixStrawHits     {Name("minNHelixStrawHits"   ), Comment("straw hit save threshold"    )  };
+      fhicl::Atom<int>             minNHelixComboHits     {Name("minNHelixComboHits"   ), Comment("combo hit save threshold"    )  };
+      fhicl::Atom<float>           minHelixPerpMomentum   {Name("minHelixPerpMomentum" ), Comment("min pt of helix"             )  };
+      fhicl::Atom<float>           maxHelixPerpMomentum   {Name("maxHelixPerpMomentum" ), Comment("max pt of helix"             )  };
+      fhicl::Atom<float>           minHelixMomentum       {Name("minHelixMomentum"     ), Comment("min momentum of helix"       )  };
+      fhicl::Atom<float>           maxHelixMomentum       {Name("maxHelixMomentum"     ), Comment("max momentum of helix"       )  };
+      fhicl::Atom<float>           chi2LineSaveThresh     {Name("chi2LineSaveThresh"   ), Comment("max chi2Dof for line"        )  };
+      fhicl::Atom<float>           maxEDepAvg             {Name("maxEDepAvg"           ), Comment("max avg edep of combohits"   )  };
+      fhicl::Atom<float>           tzSlopeSigThresh       {Name("tzSlopeSigThresh"     ), Comment("direction ambiguous if below")  };
+      fhicl::Sequence<std::string> validHelixDirections   {Name("validHelixDirections" ), Comment("only save desired directions")  };
 
       fhicl::Table<AgnosticHelixFinderTypes::Config> diagPlugin  {Name("diagPlugin"), Comment("diag plugin"                   )  };
     };
@@ -183,6 +189,7 @@ namespace mu2e {
     float    _max2PiAmbigResidual;
     float    _maxPhiZResidual;
     int      _minFinalSeedHits;
+    float    _maxNHitsRatio;
     float    _maxCircleRecoverSigma;
     float    _maxLineRecoverSigma;
     float    _caloClusterSigma;
@@ -194,13 +201,15 @@ namespace mu2e {
     float    _maxHelixMomentum;
     float    _chi2LineSaveThresh;
     float    _maxEDepAvg;
-    float    _maxNHitsRatio;
+    float    _tzSlopeSigThresh;
+    std::vector<TrkFitDirection::FitDirection> _validHelixDirections;
 
     //-----------------------------------------------------------------------------
     // diagnostics
     //-----------------------------------------------------------------------------
     art::Handle<CaloClusterCollection>   _ccHandle;
     const mu2e::Calorimeter*             _calorimeter;
+    const mu2e::Tracker*                 _tracker;
     art::Event*                          _event;
 
     //-----------------------------------------------------------------------------
@@ -269,6 +278,7 @@ namespace mu2e {
     void         recoverPoints             (bool& recoveries);
     void         checkHelixViability       (LoopCondition& outcome);
     void         saveHelix                 (size_t tc, HelixSeedCollection& HSColl);
+    bool         validHelixDirection       (TrkFitDirection::FitDirection direction);
 
   };
 
@@ -306,6 +316,7 @@ namespace mu2e {
     _max2PiAmbigResidual           (config().max2PiAmbigResidual()                   ),
     _maxPhiZResidual               (config().maxPhiZResidual()                       ),
     _minFinalSeedHits              (config().minFinalSeedHits()                      ),
+    _maxNHitsRatio                 (config().maxNHitsRatio()                         ),
     _maxCircleRecoverSigma         (config().maxCircleRecoverSigma()                 ),
     _maxLineRecoverSigma           (config().maxLineRecoverSigma()                   ),
     _caloClusterSigma              (config().caloClusterSigma()                      ),
@@ -317,21 +328,24 @@ namespace mu2e {
     _maxHelixMomentum              (config().maxHelixMomentum()                      ),
     _chi2LineSaveThresh            (config().chi2LineSaveThresh()                    ),
     _maxEDepAvg                    (config().maxEDepAvg()                            ),
-    _maxNHitsRatio                 (config().maxNHitsRatio()                         )
+    _tzSlopeSigThresh              (config().tzSlopeSigThresh()                      )
+  {
 
-    {
-
-      consumes<ComboHitCollection>     (_chLabel);
-      consumes<TimeClusterCollection>  (_tcLabel);
-      consumes<CaloClusterCollection>  (_ccLabel);
-      produces<HelixSeedCollection>    ();
-
-      if (_diagLevel == 1) _hmanager = art::make_tool<ModuleHistToolBase>(config().diagPlugin, "diagPlugin");
-      else _hmanager = std::make_unique<ModuleHistToolBase>();
-
-      if (_useStoppingTarget == true) { _stopTargPos.SetCoordinates(0.0, 0.0, std::numeric_limits<float>::max()); }
-
+    // convert the helix direction names into enums
+    for(auto helix_dir : config().validHelixDirections()) {
+      _validHelixDirections.push_back(TrkFitDirection::fitDirectionFromName(helix_dir));
     }
+    consumes<ComboHitCollection>     (_chLabel);
+    consumes<TimeClusterCollection>  (_tcLabel);
+    consumes<CaloClusterCollection>  (_ccLabel);
+    produces<HelixSeedCollection>    ();
+
+    if (_diagLevel == 1) _hmanager = art::make_tool<ModuleHistToolBase>(config().diagPlugin, "diagPlugin");
+    else _hmanager = std::make_unique<ModuleHistToolBase>();
+
+    if (_useStoppingTarget == true) { _stopTargPos.SetCoordinates(0.0, 0.0, std::numeric_limits<float>::max()); }
+
+  }
 
   //-----------------------------------------------------------------------------
   // destructor
@@ -355,6 +369,9 @@ namespace mu2e {
 
     GeomHandle<mu2e::Calorimeter> ch;
     _calorimeter = ch.get();
+
+    GeomHandle<mu2e::Tracker> th;
+    _tracker = th.get();
 
     GeomHandle<BFieldManager> bfmgr;
     GeomHandle<DetectorSystem> det;
@@ -604,9 +621,8 @@ namespace mu2e {
     // order from largest z to smallest z (skip over stopping target and calo cluster since they
     // aren't in _chColl)
     std::sort(_tcHits.begin() + sortStartIndex, _tcHits.end(), [&](const cHit& a, const cHit& b) {
-        return _chColl->at(a.hitIndice).pos().z() > _chColl->at(b.hitIndice).pos().z();
-      });
-
+      return _chColl->at(a.hitIndice).pos().z() > _chColl->at(b.hitIndice).pos().z();
+    });
   }
 
   //-----------------------------------------------------------------------------
@@ -1332,7 +1348,6 @@ namespace mu2e {
   // function to save helix
   //-----------------------------------------------------------------------------
   void AgnosticHelixFinder::saveHelix(size_t tc, HelixSeedCollection& HSColl) {
-
     HelixSeed hseed;
     hseed._t0 = _tcColl->at(tc)._t0;
     auto _tcCollH = _event->getValidHandle<TimeClusterCollection>(_tcLabel);
@@ -1388,8 +1403,32 @@ namespace mu2e {
 
     if (eDepAvg > _maxEDepAvg) return;
 
+    // compute direction of propagation and make save decision
+    HelixTool helTool(&hseed,_tracker);
+    float tzSlope = 0.0;
+    float tzSlopeErr = 0.0;
+    float tzSlopeChi2 = 0.0;
+    helTool.dirOfProp(tzSlope, tzSlopeErr, tzSlopeChi2);
+    HelixRecoDir helDir(tzSlope, tzSlopeErr, tzSlopeChi2);
+    hseed._recoDir = helDir;
+    hseed._propDir = helDir.predictDirection(_tzSlopeSigThresh);
+    if (!validHelixDirection(hseed._propDir)) return;
+
     // push back the helix seed to the helix seed collection
     HSColl.emplace_back(hseed);
+
+  }
+
+  //-----------------------------------------------------------------------------
+  // check if the propagation direction is among the desired save directions
+  //-----------------------------------------------------------------------------
+  bool AgnosticHelixFinder::validHelixDirection(TrkFitDirection::FitDirection direction) {
+
+    for (size_t i=0; i<_validHelixDirections.size(); i++) {
+      if (_validHelixDirections.at(i) == direction) return true;
+    }
+
+    return false;
 
   }
 

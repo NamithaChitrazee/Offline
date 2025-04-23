@@ -28,11 +28,11 @@ namespace mu2e {
 // intersection of the two hit wires
 //-----------------------------------------------------------------------------
     struct Intersection_t {
-      double     x;                        // x-coordinate of the intersection point
-      double     y;                        // y-coordinate of the intersection point
-      double     z;                        // y-coordinate of the intersection point
-      double     wd1;                      // distance btw the 1st hit and the intersection
-      double     wd2;                      // distance btw the 2nd hit and the intersection
+      double     x;                     // x-coordinate of the intersection point
+      double     y;                     // y-coordinate of the intersection point
+      double     z;                     // y-coordinate of the intersection point
+      double     wd1;                   // distance btw the 1st hit and the intersection
+      double     wd2;                   // distance btw the 2nd hit and the intersection
     };
   }
 }
