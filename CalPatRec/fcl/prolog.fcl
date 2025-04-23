@@ -412,7 +412,7 @@ CalPatRec : { @table::CalPatRec
         DeltaFinderAna : { module_type:DeltaFinderAna
             chCollTag              : "DeltaFinder"           ## "makePH"                # use combo hits
             shCollTag              : "makeSH"                # assume StrawHits have been written out
-            sschCollTag            : "DeltaFinder:StrawHits" ## "makeSH"                # 1-straw combohits
+            sschCollTag            : "makeSH" ## "DeltaFinder:StrawHits" ## "makeSH"                # 1-straw combohits
             sdmcCollTag            : "compressDigiMCs"
             debugLevel             : 0
             diagLevel              : 0

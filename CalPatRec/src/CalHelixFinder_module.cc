@@ -41,6 +41,7 @@
 #include "TSystem.h"
 #include "TInterpreter.h"
 
+using namespace std;
 using namespace boost::accumulators;
 using CLHEP::HepVector;
 using CLHEP::Hep3Vector;
@@ -219,17 +220,12 @@ namespace mu2e {
 
     if ((_debugLevel > 0) && (_iev%_printfreq) == 0) printf("[%s] : START event number %8i\n", oname,_iev);
 
-    std::map<Helicity,std::unique_ptr<HelixSeedCollection>> helcols;
+    std::map<Helicity,unique_ptr<HelixSeedCollection>> helcols;
     int counter(0);
-    if (!_doSingleOutput)  {
-      for( auto const& hel : _hels) {
-        helcols[hel] = std::unique_ptr<HelixSeedCollection>(new HelixSeedCollection());
-        _data.nseeds [counter] = 0;
-        ++counter;
-      }
-    }else {
-      helcols[0] = std::unique_ptr<HelixSeedCollection>(new HelixSeedCollection());
+    for( auto const& hel : _hels) {
+      helcols[hel] = unique_ptr<HelixSeedCollection>(new HelixSeedCollection());
       _data.nseeds [counter] = 0;
+      ++counter;
     }
     //    unique_ptr<HelixSeedCollection>    outseeds(new HelixSeedCollection);
 //-----------------------------------------------------------------------------
@@ -311,9 +307,6 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
       if ( (index_best>=0) && (index_best < 2) ){
         Helicity              hel_best = helix_seed_vec[index_best]._helix._helicity;
-        if (_doSingleOutput) {
-          hel_best = 0;
-        }
         HelixSeedCollection*  hcol     = helcols[hel_best].get();
         helix_seed_vec[index_best]._status.merge(TrkFitFlag::helixOK);
         hcol->push_back(helix_seed_vec[index_best]);
@@ -322,9 +315,6 @@ namespace mu2e {
         for (unsigned k=0; k<_hels.size(); ++k){
           helix_seed_vec[k]._status.merge(TrkFitFlag::helixOK);
           Helicity              hel_best = helix_seed_vec[k]._helix._helicity;
-          if (_doSingleOutput) {
-            hel_best = 0;
-          }
           HelixSeedCollection*  hcol     = helcols[hel_best].get();
           hcol->push_back(helix_seed_vec[k]);
         }
@@ -430,15 +420,15 @@ namespace mu2e {
 // put reconstructed tracks into the event record
 //-----------------------------------------------------------------------------
   END:;
-    int    nseeds(0);
-    if (_doSingleOutput) {
-      nseeds += helcols[0]->size();
-      event.put(std::move(helcols[0]));
-    }else    {
-      for(auto const& hel : _hels ) {
-        nseeds += helcols[hel]->size();
-        event.put(std::move(helcols[hel]),Helicity::name(hel));
+    int    nseeds(0);// = outseeds->size();
+    for(auto const& hel : _hels ) {
+      nseeds += helcols[hel]->size();
+        // set the flag here: This should be set on initialization FIXME!
+      for(auto & helix : *helcols[hel] ) {
+        helix._status.merge(TrkFitFlag::CPRHelix);
       }
+
+      event.put(std::move(helcols[hel]),Helicity::name(hel));
     }
  }
 
@@ -478,8 +468,7 @@ namespace mu2e {
 
     HelSeed._helix._fz0      = phi0 - M_PI/2.*_hfinder._dfdzsign -z0*hel->omega()/hel->tanDip() ;
 
-    HelSeed._helix._helicity = HfResult._helicity;
-    HelSeed._status.merge(TrkFitFlag::CPRHelix);
+    HelSeed._helix._helicity = HfResult._helicity;//_dfdzsign > 0 ? Helicity::poshel : Helicity::neghel;
 
     //include also the values of the chi2d
     HelSeed._helix._chi2dXY   = HfResult._sxy.chi2DofCircle();

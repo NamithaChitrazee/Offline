@@ -35,6 +35,7 @@ namespace mu2e {
     tsda->_version     = c.getInt("tsda.version",  1);
     tsda->_build       = c.getInt("tsda.build"  , -3);
 
+    printf("%s: tsda->_build  : %i\n",__func__,tsda->_build);
     return tsda;
 
   } // make()

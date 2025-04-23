@@ -192,6 +192,7 @@ ParticleGunMu : { tool_type: "ParticleGunMu"
     pmax            : 100.
     mode            : "flat"
 }
+
 GenFilter : {
     module_type : GenFilter
     StageParticleCollection : "generate"
