@@ -32,8 +32,10 @@ namespace mu2e {
 
     tsda->_mat4        = c.getString("tsda.materialName");
 
-    tsda->_version     = c.getInt("tsda.version", 1);
+    tsda->_version     = c.getInt("tsda.version",  1);
+    tsda->_build       = c.getInt("tsda.build"  , -3);
 
+    printf("%s: tsda->_build  : %i\n",__func__,tsda->_build);
     return tsda;
 
   } // make()

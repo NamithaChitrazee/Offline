@@ -93,8 +93,6 @@ namespace mu2e {
       Pzz_t                   fPanel [3];
       double                  z = 0.;           //
 
-      FaceZ_t();
-
       Pzz_t*                  Panel   (int I) { return &fPanel[I]; }
       int                     nHits        () { return fHitData.size(); }
       int                     nProtonHits  () { return fProtonHitData.size(); }
@@ -104,22 +102,22 @@ namespace mu2e {
     };
 
     struct Data_t {
-      const art::Event*             event = nullptr;
-      const Tracker*                tracker = nullptr;
-      const DiskCalorimeter*        calorimeter = nullptr;
+      const art::Event*             event;
+      const Tracker*                tracker;
+      const DiskCalorimeter*        calorimeter;
 
       art::InputTag                 chCollTag;
       art::InputTag                 sdmcCollTag;
 
-      const ComboHitCollection*     chcol = nullptr;
-      ComboHitCollection*           outputChColl = nullptr;
+      const ComboHitCollection*     chcol;
+      ComboHitCollection*           outputChColl;
 
-      DeltaFinderAlg*               _finder = nullptr;
+      DeltaFinderAlg*               _finder;
 
-      int                           debugLevel = 0;              // printout level
+      int                           debugLevel;              // printout level
 
-      int                           _nComboHits = 0;
-      int                           _nStrawHits = 0;
+      int                           _nComboHits;
+      int                           _nStrawHits;
       std::vector<const ComboHit*>  _v;                      // sorted
 
       ManagedList<DeltaSeed>        fListOfSeeds       [kNStations];
