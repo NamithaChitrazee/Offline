@@ -32,7 +32,6 @@ CommonTrk                : {
                 HelixSeedCollections : [ "MHFinderDe"  ]
             }
         }
-        # KFFDeHDar  : { @table::CalPatRec.producers.CalTrkFitDe  SeedCollection : KSFDeH  }
 #------------------------------------------------------------------------------
 # KinKal track fit, downstream muon hypothesis
 #------------------------------------------------------------------------------
@@ -42,7 +41,6 @@ CommonTrk                : {
                 HelixSeedCollections  : [ "MHFinderDmu" ]
             }
         }
-        # KKDmuHDar : { @table::CalPatRec.producers.CalTrkFitDm  SeedCollection : KSFDmuH }
 #------------------------------------------------------------------------------
 # KinKal track fit, upstream electron hypothesis
 #------------------------------------------------------------------------------
@@ -83,4 +81,5 @@ CommonTrk.helix_reco_Umu  : [ CalTimePeakFinderUmu, CalHelixFinderUmu, MHFinderC
                               TZClusterFinder, AgnosticHelixFinder,
                               MHFinderTprUmu    ,
                               MHFinderUmu ]
+                              
 END_PROLOG
