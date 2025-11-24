@@ -2,6 +2,8 @@ cet_make_library(
     SOURCE
       src/AlgorithmID.cc
       src/BkgClusterFlag.cc
+      src/BkgCluster.cc
+      src/BkgClusterHit.cc
       src/BkgQual.cc
       src/ComboHit.cc
       src/CosmicTrack.cc
@@ -52,7 +54,8 @@ art_dictionary( NO_CHECK_CLASS_VERSION # For some reason this segfaults
     CLASSES_DEF_XML ${CMAKE_CURRENT_SOURCE_DIR}/src/classes_def.xml
     CLASSES_H ${CMAKE_CURRENT_SOURCE_DIR}/src/classes.h
      DICTIONARY_LIBRARIES
-      Offline::RecoDataProducts
+     Offline::RecoDataProducts
+     Offline::GeneralUtilities
 )
 install_source(SUBDIRS src)
 install_headers(USE_PROJECT_NAME SUBDIRS inc)
