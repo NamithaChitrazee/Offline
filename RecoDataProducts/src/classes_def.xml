@@ -95,7 +95,7 @@
  <class name="mu2e::ComboHitCollection"/>
  <class name="std::vector<art::Ptr<mu2e::ComboHit> >"/>
  <class name="art::Ptr<mu2e::ComboHit>"/>
- <class name="art::Wrapper<mu2e::ComboHitCollection>"/>
+ <class name="art::Wrapper<mu2e::ComboHitCollection>"/> 
 
 <ioread sourceClass="mu2e::ComboHitCollection"
         source="art::ProductID _parent;"
@@ -172,6 +172,14 @@
  <class name="mu2e::BkgClusterCollection"/>
  <class name="art::Wrapper<mu2e::BkgClusterCollection>"/>
 
+ <class name="mu2e::TwoDPoint"/>
+ <class name="art::Wrapper<mu2e::TwoDPoint>"/>
+ <class name="mu2e::CombineTwoDPoints"/>
+ <class name="art::Wrapper<mu2e::CombineTwoDPoints>"/>
+ <class name="mu2e::TwoDWeight"/>
+ <class name="art::Wrapper<mu2e::TwoDWeight>"/>
+ <class name="mu2e::CombineTwoDPoints::CWT"/>
+ <class name="std::map<unsigned long, mu2e::CombineTwoDPoints::CWT>"/>
 
 <!--  ********* tracking output  ********* -->
 
