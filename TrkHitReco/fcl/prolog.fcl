@@ -8,10 +8,10 @@ TrkHitReco :{
    # First, configure the clusters
 
    DBSClusterer : {
-      DBSminExpand    : 2
-      DeltaTime       : 15
+      DBSminExpand    : 1
+      DeltaTime       : 30
       DeltaZ          : 800
-      DeltaXY         : 50
+      DeltaXY         : 200
       MinClusterHits  : 1
       TestFlag        : false
       BackgroundMask  : []
@@ -152,7 +152,7 @@ TrkHitReco : {
    # Background hit flagging
    FlagBkgHits : {
       module_type          : FlagBkgHits
-      ComboHitCollection   : "makeSTH"
+      ComboHitCollection   : "makePH"
       ClusterAlgorithm     : 3
       TNTClustering        : {@table::TrkHitReco.TNTClusterer}
       Chi2Clustering       : {@table::TrkHitReco.Chi2Clusterer}

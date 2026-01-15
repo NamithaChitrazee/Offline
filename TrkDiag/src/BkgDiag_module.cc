@@ -68,6 +68,7 @@ namespace mu2e
       void fillStrawHitInfo(size_t ich, StrawHitInfo& bkghinfo) const;
       void fillStrawHitInfoMC(StrawDigiMC const& mcdigi, art::Ptr<SimParticle>const& mptr, StrawHitInfo& shinfo) const;
       bool findData(const art::Event& e);
+      void findMajority(std::vector<StrawDigiIndex>const& dids, art::Ptr<SimParticle>& mptr,XYZVectorF& mmom, int& mostCommonCode, float& fraction) const;
       void findMain(std::vector<StrawDigiIndex>const& dids, art::Ptr<SimParticle>& mptr,XYZVectorF& mmom, std::vector<int>& icontrib) const;
 
       // control flags
@@ -103,6 +104,7 @@ namespace mu2e
       float _cchi2 = 0;
       float _ccons = 0;
       float _ctime = 0;
+      float _cedep = 0;
       float _cpitch = 0;
       float _cyaw = 0;
       float _cqual = 0;
@@ -124,6 +126,9 @@ namespace mu2e
       float _zmin;
       float _zmax;
       float _zgap;
+    //float _slope;
+      float _zdiff;
+      float _zgap2;
       float _pfrac;
       float _kQ;
       int _np, _fp, _lp, _pgap;
@@ -131,6 +136,8 @@ namespace mu2e
       // MC truth variables
       int _mpdg, _mproc, _ncontrib, _icontrib[512];
       int _prel;
+      int _code;
+      float _frac;
       XYZVectorF _mmom, _mopos;
       int _nconv, _ndelta, _ncompt, _ngconv, _nebkg, _nprot, _nmain, _nsibling, _nrel;
       std::vector<BkgHitInfo> _bkghinfo;
@@ -183,6 +190,7 @@ namespace mu2e
     _bcdiag->Branch("cchi2",&_cchi2,"cchi2/F");
     _bcdiag->Branch("ccons",&_ccons,"ccons/F");
     _bcdiag->Branch("ctime",&_ctime,"ctime/F");
+    _bcdiag->Branch("cedep",&_cedep,"cedep/F");
     _bcdiag->Branch("rmsctime",&_rmsctime,"rmsctime/F");
     _bcdiag->Branch("avecedep",&_avecedep,"avecedep/F");
     _bcdiag->Branch("isinit",&_isinit,"isinit/B");
@@ -207,6 +215,9 @@ namespace mu2e
     _bcdiag->Branch("zmin",&_zmin,"zmin/F");
     _bcdiag->Branch("zmax",&_zmax,"zmax/F");
     _bcdiag->Branch("zgap",&_zgap,"zgap/F");
+    // _bcdiag->Branch("slope",&_slope,"slope/F");
+    _bcdiag->Branch("zdiff",&_zdiff,"zdiff/F");
+    _bcdiag->Branch("zgap2",&_zgap2,"zgap2/F");
     _bcdiag->Branch("np",&_np,"np/I");
     _bcdiag->Branch("pfrac",&_pfrac,"pfrac/F");
     _bcdiag->Branch("kQ",&_kQ,"kQ/F");
@@ -221,6 +232,8 @@ namespace mu2e
       _bcdiag->Branch("mpdg",&_mpdg,"mpdg/I");
       _bcdiag->Branch("mproc",&_mproc,"mproc/I");
       _bcdiag->Branch("prel",&_prel,"prel/I");
+      _bcdiag->Branch("code",&_code,"code/I");
+      _bcdiag->Branch("frac",&_frac,"frac/F");
       _bcdiag->Branch("nmain",&_nmain,"nmain/I");
       _bcdiag->Branch("nsibling",&_nsibling,"nsibling/I");
       _bcdiag->Branch("nrel",&_nrel,"nrel/I");
@@ -287,6 +300,7 @@ namespace mu2e
       _crho = sqrtf(cluster.pos().perp2());
       _cpos = cluster.pos();
       _ctime = cluster.time();
+      _cedep = cluster.edep();
       if(cluster.getDistMethod() == BkgCluster::chi2){
         _cchi2 = cluster.points().chisquared();
         _ccons = cluster.points().consistency();
@@ -324,17 +338,28 @@ namespace mu2e
         // fill vector of indices to all digis used in this cluster's hits
         // this goes recursively through the ComboHit chain
         std::vector<StrawDigiIndex> cdids;
+        //std::cout<<"Cluster hits size = "<<cluster.hits().size()<<std::endl;
         for(auto const& ich : cluster.hits()){
           // get the list of StrawHit indices associated with this ComboHit
           _chcol->fillStrawDigiIndices(ich,cdids);
         }
         std::vector<int> icontrib;
         findMain(cdids,mptr,_mmom,icontrib);
+        findMajority(cdids,mptr,_mmom,_code, _frac);
+        _mpdg = mptr->pdgId();
+        _mproc = mptr->creationCode();
+        _mopos = mptr->startPosXYZ();
         for (int ic : icontrib) {_icontrib[_ncontrib]=ic; ++_ncontrib;}
-        if(mptr.isNonnull()){
+        if(_code == 12 or _code == 17 or _code == 40)
+          _prel = -2;
+        else
+          _prel = 0;
+        //std::cout<<"Analyze:: After find majority = "<<_code<<" frac = "<<_frac<<" pdg = "<<_mpdg<<" mom = "<<_mmom<<" prel = "<<_prel<<std::endl;
+        /*if(mptr.isNonnull()){
           _mpdg = mptr->pdgId();
           _mproc = mptr->creationCode();
           _mopos = mptr->startPosXYZ();
+          std::cout<<"Analyze:: mpdg = "<<_mpdg<<" creation code = "<<_mproc<<std::endl;
           for(auto const& mcmptr : _mcprimary->primarySimParticles()){
             MCRelationship rel(mcmptr,mptr);
             if(rel.relationship() > MCRelationship::none){
@@ -342,14 +367,18 @@ namespace mu2e
                 _prel = std::min(_prel,(int)rel.relationship());
               else
                 _prel = rel.relationship();
+              std::cout<<"prel = "<<_prel<<" mPDG ID = "<<_mpdg<<" creation code = "<<_mproc<<std::endl;
             }
           }
-        }
+        }*/
       }
       // fill cluster hit info
       _bkghinfo.clear();
       _bkghinfo.reserve(cluster.hits().size());
       _nch = cluster.hits().size();
+      /*if(_nch > 0) {
+        std::cout<<"Cluster size = "<<_nch<<" code = "<<_code<<" pdg = "<<_mpdg<<std::endl;
+        }*/
       _nsh = _nsth = _nactive = _nsha = _nbkg = _nrel = 0;
       float sumEdep(0.);
       float sumEcc(0.);
@@ -468,9 +497,19 @@ namespace mu2e
       _ccomqual = _cqual + _csthqual;//combined quality metric
       std::sort(hz.begin(),hz.end());
       _zgap = 0.0;
-      for (unsigned iz=1;iz<hz.size();++iz)_zgap=std::max(_zgap,hz[iz]-hz[iz-1]);
+      //_slope = 0.0;
+      _zdiff = 0.0;
+      _zgap2 = 0.0;
+
+      for (unsigned iz=1;iz<hz.size();++iz){
+        _zgap = std::max(_zgap,hz[iz]-hz[iz-1]);
+        _zgap2 = _zgap2 + (hz[iz] - hz[iz-1]);
+      }
+      _zgap2 = _zgap2/hz.size();
       _zmin = hz.front();
       _zmax = hz.back();
+      //if(_zgap == 0 or _zgap2 == 0 or _zdiff == 0) std::cout<<_zgap<<" "<<_zgap2<<" "<<_zdiff<<std::endl;
+      if(_nch > 2) _zdiff = _zmax - _zmin;
       _lp = -1; // last plane in cluster
       _fp = StrawId::_nplanes; // first plane in cluster
       _np = 0;//# of planes
@@ -511,6 +550,46 @@ namespace mu2e
       && ( (_mcdigis != 0 && _mcprimary != 0)  || !_mcdiag);
   }
 
+  void BkgDiag::findMajority(std::vector<uint16_t>const& dids, art::Ptr<SimParticle>& mptr,XYZVectorF& mmom, int& mostCommonCode, float& fraction)
+    const {
+    // find the unique simparticles which produced these hits
+    mostCommonCode = -1;
+    fraction = 0.0;
+    std::map<int, unsigned> codeCount;
+    for(auto id : dids) {
+      StrawDigiMC const& mcdigi = _mcdigis->at(id);
+      art::Ptr<SimParticle> const& spp = mcdigi.earlyStrawGasStep()->simParticle();
+      if(spp.isNonnull()){
+        int creationCode = spp->creationCode();
+        //if(dids.size() < 2) std::cout<<"cluster has "<<dids.size()<<" creation code = "<<creationCode<<" pdg ID = "<<spp->pdgId()<<std::endl;
+        ++codeCount[creationCode];
+        //std::cout<<"findMajority::MCDigi ID = "<<id<<" simParticle = "<<spp->pdgId()<<" creation code = "
+        //         <<spp->creationCode()<<std::endl;
+      }
+    }
+    // Find most common code
+    unsigned maxCount = 0;
+    for(auto const& kv : codeCount) {
+      if(kv.second > maxCount) {
+        maxCount = kv.second;
+        mostCommonCode = kv.first;
+      }
+    }
+    fraction = static_cast<float>(maxCount)/static_cast<float>(dids.size());
+    // Second pass: find momentum of first matching digi
+    for(auto id : dids) {
+      StrawDigiMC const& mcdigi = _mcdigis->at(id);
+      auto const& sgsp = mcdigi.earlyStrawGasStep();
+      art::Ptr<SimParticle> const& spp = sgsp->simParticle();;
+      if(spp.isNull()) continue;
+      mptr = spp;
+      if(spp->creationCode() == mostCommonCode) {
+        mmom = sgsp->momentum();
+        break;
+      }
+    }
+    //std::cout<<"findMajority::most common code = "<<mostCommonCode<<" fraction = "<<fraction<<" mom = "<<mmom<<std::endl;
+  }
 
   void BkgDiag::findMain(std::vector<uint16_t>const& dids, art::Ptr<SimParticle>& mptr,XYZVectorF& mmom, std::vector<int>& icontrib) const {
     // find the unique simparticles which produced these hits
@@ -520,6 +599,8 @@ namespace mu2e
       art::Ptr<SimParticle> const& spp = mcdigi.earlyStrawGasStep()->simParticle();
       if(spp.isNonnull()){
         pp.insert(spp);
+        //std::cout<<"findMain::MCDigi ID = "<<id<<" simParticle = "<<spp->pdgId()<<" creation code = "
+        //         <<spp->creationCode()<<std::endl;
       }
     }
     // map these particles back to each other, to compress out particles generated inside the cluster
@@ -609,6 +690,7 @@ namespace mu2e
       art::Ptr<SimParticle> const& spp = sgsp->simParticle();
       if(spp == mptr){
         mmom = sgsp->momentum();
+        //std::cout<<"mmom = "<<mmom<<" pdgID = "<<spp->pdgId()<<" creation code = "<<spp->creationCode()<<std::endl;
         break;
       }
     }
@@ -683,4 +765,3 @@ namespace mu2e
 // Part of the magic that makes this class a module.
 using mu2e::BkgDiag;
 DEFINE_ART_MODULE(BkgDiag)
-

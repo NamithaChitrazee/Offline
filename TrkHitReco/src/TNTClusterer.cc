@@ -54,7 +54,7 @@ namespace mu2e
 
   //----------------------------------------------------------------------------------------------------------
   void TNTClusterer::findClusters(BkgClusterCollection& clusters, const ComboHitCollection& chcol)
-  {
+  { std::cout<<"TNTClusterer findClusters"<<std::endl;
     std::vector<BkgHit> BkgHits;
     BkgHits.reserve(chcol.size());
     if (chcol.empty()) return;
@@ -271,19 +271,26 @@ namespace mu2e
     if (cluster.hits().size()==1) {
       int idx = BkgHits[cluster.hits().at(0)].chidx_;
       cluster.time(chcol[idx].correctedTime());
-      cluster.pos(XYZVectorF(chcol[idx].pos().x(),chcol[idx].pos().y(),0.0f));
+      cluster.pos(XYZVectorF(chcol[idx].pos().x(),chcol[idx].pos().y(),chcol[idx].pos().z()));
+      XYZVectorF hitpos(chcol[idx].pos().x(), chcol[idx].pos().y(), chcol[idx].pos().z());
+      //std::cout<<"hit pos = "<<hitpos.x()<<" "<<hitpos.y()<<" "<<hitpos.z()<<std::endl;
+      cluster.addHitPosition(hitpos);
       return;
     }
 
     float crho  = sqrtf(cluster.pos().perp2());
     float cphi  = cluster.pos().phi();
     float ctime = cluster.time();
-
+    float cz = 0.0;
     if (useMedian_) {
       std::vector<float> racc,pacc,tacc;
       for (auto& hit : cluster.hits()) {
         int idx  = BkgHits[hit].chidx_;
         float dt = chcol[idx].correctedTime() - ctime;
+        XYZVectorF hitpos(chcol[idx].pos().x(), chcol[idx].pos().y(), chcol[idx].pos().z());
+        //std::cout<<"hit pos = "<<hitpos.x()<<" "<<hitpos.y()<<" "<<hitpos.z()<<std::endl;
+        cluster.addHitPosition(hitpos);
+        cz += chcol[idx].pos().z();
         float dr = sqrtf(chcol[idx].pos().perp2()) - crho;
         float dp = chcol[idx].phi() - cphi;
         if (dp > M_PI)  dp -= 2*M_PI;
@@ -296,7 +303,7 @@ namespace mu2e
           tacc.emplace_back(dt);
         }
       }
-
+      cz = cz/cluster.hits().size();
       size_t vecSize = racc.size()/2;
       std::nth_element(racc.begin(),racc.begin()+vecSize,racc.end());
       std::nth_element(pacc.begin(),pacc.begin()+vecSize,pacc.end());
@@ -314,7 +321,7 @@ namespace mu2e
         float weight = chcol[idx].nStrawHits();
         float dt     = chcol[idx].correctedTime()-ctime;
         float dr     = sqrtf(chcol[idx].pos().perp2()) - crho;
-
+        cz += chcol[idx].pos().z();
         float dp     = chcol[idx].phi()-cphi;
         if (dp > M_PI)  dp -= 2*M_PI;
         if (dp < -M_PI) dp += 2*M_PI;
@@ -324,13 +331,15 @@ namespace mu2e
         deltaP    += dp*weight;
         sumWeight += weight;
       }
+      cz = cz/cluster.hits().size();
       crho  += deltaR/sumWeight;
       cphi  += deltaP/sumWeight;
       ctime += deltaT/sumWeight;
     }
 
     cluster.time(ctime);
-    cluster.pos(XYZVectorF(crho*cos(cphi),crho*sin(cphi),0.0f));
+    cluster.pos(XYZVectorF(crho*cos(cphi),crho*sin(cphi),cz));
+    //std::cout<<"cluster pos  time ="<<ctime<<" cz = "<<cz<<std::endl;
 
   }
 

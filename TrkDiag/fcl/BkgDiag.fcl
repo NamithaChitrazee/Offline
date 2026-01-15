@@ -11,7 +11,10 @@ process_name : ComboHitDiag
 source : { module_type : RootInput }
 services : @local::Services.Reco
 physics : {
-  producers : @local::TrkHitReco.producers
+  producers : {
+  @table::TrkHitReco.producers
+  flagPH : @local::TrkHitReco.producers.FlagBkgHits
+  }
   analyzers :  {
     BD : {
       @table::BD
@@ -23,3 +26,6 @@ physics : {
 services.TimeTracker.printSummary: true
 services.TFileService.fileName: "nts.owner.BD.version.sequence.root"
 physics.producers.FlagBkgHits.SaveBkgClusters : true
+services.DbService.purpose: MDC2020_best
+services.DbService.version: v1_3
+services.DbService.verbose : 2
