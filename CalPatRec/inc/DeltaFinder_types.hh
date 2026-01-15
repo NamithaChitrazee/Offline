@@ -95,6 +95,8 @@ namespace mu2e {
       Pzz_t                   fPanel [3];
       double                  z = 0.;           //
 
+      FaceZ_t();
+
       Pzz_t*                  Panel   (int I) { return &fPanel[I]; }
       int                     nHits        () { return fHitData.size(); }
       int                     nProtonHits  () { return fProtonHitData.size(); }
@@ -104,9 +106,9 @@ namespace mu2e {
     };
 
     struct Data_t {
-      const art::Event*             event;
-      const Tracker*                tracker;
-      const DiskCalorimeter*        calorimeter;
+      const art::Event*             event = nullptr;
+      const Tracker*                tracker = nullptr;
+      const DiskCalorimeter*        calorimeter = nullptr;
 
       art::InputTag                 chCollTag;
       art::InputTag                 sdmcCollTag;
@@ -116,7 +118,7 @@ namespace mu2e {
       const EventWindowMarker*      ewm = nullptr;
       float                         timeBin; // time bin size in algorithm
 
-      DeltaFinderAlg*               _finder;
+      DeltaFinderAlg*               _finder = nullptr;
 
       int                           debugLevel = 0;              // printout level
       int                           doTiming   = 0;              // for timing analysis
