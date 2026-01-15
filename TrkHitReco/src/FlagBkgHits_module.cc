@@ -239,7 +239,7 @@ namespace mu2e
 
       for (const auto& chit : cluster.hits())
         chfcol[chit].merge(flag);
-    }  
+    }
   }
 
 
