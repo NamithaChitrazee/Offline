@@ -48,6 +48,7 @@ namespace mu2e {
       fhicl::Atom<float>           maxSeedEDep       {Name("maxSeedEDep"       ), Comment("max seed eDep"               ) };
       fhicl::Atom<float>           minProtonSeedEDep {Name("minProtonSeedEDep" ), Comment("min proton seed eDep"        ) };
       fhicl::Atom<float>           minProtonHitEDep  {Name("minProtonHitEDep"  ), Comment("min proton hit eDep"         ) };
+      fhicl::Atom<float>           minNHighEDepHitsProton{Name("minNHighEDepHitsProton"), Comment("min N hits w/high eDep") };
       fhicl::Atom<int>             minNSeeds         {Name("minNSeeds"         ), Comment("min N seeds in a delta cand" ) };
       fhicl::Atom<int>             minDeltaNHits     {Name("minDeltaNHits"     ), Comment("min N combo  hits in a delta") };
       fhicl::Atom<float>           maxEleHitEnergy   {Name("maxEleHitEnergy"   ), Comment("max electron hit energy"     ) };
@@ -88,6 +89,7 @@ namespace mu2e {
     float           _maxSeedEDep;          //
     float           _minProtonSeedEDep;    //
     float           _minProtonHitEDep;     //
+    int             _minNHighEDepHitsProton; //
     int             _minNSeeds;            // min number of seeds in the delta electron cluster
     int             _minDeltaNHits;        // min number of hits of a delta candidate
     float           _maxEleHitEnergy;      //
@@ -149,6 +151,8 @@ namespace mu2e {
     void         findSeeds           ();
     void         linkDeltaSeeds      ();                        // do it in upstream direction
     int          mergeDeltaCandidates();
+
+    int          minNHighEDepHitsProton() { return _minNHighEDepHitsProton; }
 
     int          orderHits           ();
     void         pruneSeeds          (int Station);

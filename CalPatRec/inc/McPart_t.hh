@@ -44,23 +44,23 @@ namespace mu2e {
       float                         fStartMom;
 
       McPart_t(const SimParticle* Sim = nullptr): TObject() {
-        fSim          = Sim;
-        fDelta        = nullptr;
-        fProton       = nullptr;
-        fFirstStation = 999;
-        fLastStation  = -1;
-        fID           = -1;
-        fMotherID     = -1;
+        fSim              = Sim;
+        fDelta            = nullptr;
+        fProton           = nullptr;
+        fFirstStation     = 999;
+        fLastStation      = -1;
+        fID               = -1;
+        fMotherID         = -1;
         fPdgID            = 0;
         fNHitsCE          = 0;
         fNChFlaggedDelta  = 0;
         fNHitsDelta       = 0;
         fNChFlaggedProton = 0;
         fNHitsProton      = 0;
-        fStartMom     = -1;
-        fTime         = 1.e6;                 // at initialization, make it absurd
-        fHitTMin      = 1.e6;
-        fHitTMax      = -1.e6;
+        fStartMom         = -1;
+        fTime             = 1.e6;                 // at initialization, make it absurd
+        fHitTMin          = 1.e6;
+        fHitTMax          = -1.e6;
       }
 
       ~McPart_t() { fListOfHits.clear(); }

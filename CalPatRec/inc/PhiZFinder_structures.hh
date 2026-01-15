@@ -1,8 +1,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 // ComboHit.hh needs the definition of ProductID ...
 ///////////////////////////////////////////////////////////////////////////////
-#ifndef CalPatRec_DeltaFinder_structures_hh
-#define CalPatRec_DeltaFinder_structures_hh
+#ifndef CalPatRec_PhiZSeedFinder_structures_hh
+#define CalPatRec_PhiZSeedFinder_structures_hh
 
 #include "Offline/CalPatRec/inc/CalPatRec_enums.hh"
 #include "Offline/CalPatRec/inc/ChannelID.hh"
@@ -12,10 +12,10 @@ namespace mu2e {
 
   class  Panel;
   class  SimParticle;
-  struct DeltaCandidate;
-  class  DeltaSeed;
+  struct PhiZCandidate;
+  class  PhiZSeed;
 
-  namespace DeltaFinderTypes {
+  namespace PhiZSeedFinderTypes {
 
     extern float  stationZ   [kNStations];
 

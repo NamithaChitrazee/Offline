@@ -13,7 +13,7 @@ namespace mu2e {
   namespace DeltaFinderTypes {
 
     float stationZ   [kNStations];
-
+    
 //-----------------------------------------------------------------------------
     FaceZ_t::FaceZ_t() {
       memset(fFirst ,0,kMaxNTimeBins*sizeof(int));
@@ -28,11 +28,6 @@ namespace mu2e {
     Data_t::Data_t() {
       for (int is=0; is<kNStations; is++) {
         fListOfSeeds    [is].reserve(100);
-      }
-      for(int i = 0; i < 2; ++i) {
-        for(int j = 0; j < 12; ++j) {
-          for(int k = 0; k < 12; ++k) panelOverlap[i][j][k] = 0;
-        }
       }
     }
 //-----------------------------------------------------------------------------

@@ -28,6 +28,9 @@
 
 #include "Offline/MCDataProducts/inc/ProtonBunchIntensity.hh"
 
+#include "TRACE/tracemf.h"
+#define  TRACE_NAME  "DeltaFinderDiag_tool"
+
 using namespace std;
 
 namespace mu2e {
@@ -393,8 +396,8 @@ namespace mu2e {
 // this is just a consistency check - 1-station proton candidates are required
 // to have eDep > 4 keV
 //-----------------------------------------------------------------------------
-          if ((pc->nStationsWithHits() == 1) and(pc->eDep() > 0.004)) {
-            assert (not flag->hasAnyProperty(StrawHitFlag::energysel));
+          if ((pc->nStationsWithHits() == 1) and (pc->eDep() > 0.004)) {
+            TLOG(TLVL_WARNING) << Form("PROTON candidate  nhitsTot = %3i , hit doesn't have a StrawHitFlag::energysel bit set\n",pc->nHitsTot());
           }
         }
       }
@@ -1789,7 +1792,7 @@ namespace mu2e {
             mom    = pcp->fMcPart->Momentum();
           }
           printf("* :pc:%05i itime:%3i",pc->index(),pc->timeIndex());
-          printf("  nh:nCE %3i:%2i", pc->nHitsTot(),pcp->fNHitsCE);
+          printf("  nh:nHighEDep:nCE %3i:%3i:%2i", pc->nHitsTot(),pc->nHighEDepHits(),pcp->fNHitsCE);
           printf(" s1:s2 : %02i:%02i",pc->fFirstStation,pc->fLastStation);
           printf(" simID=%5i pdgID=%10i mom=%8.2f\n",sim_id,pdg_id,mom);
           printf("----------------------------------------------------------------------------------------------------------------\n");

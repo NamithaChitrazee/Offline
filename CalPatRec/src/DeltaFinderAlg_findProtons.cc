@@ -438,6 +438,9 @@ namespace mu2e {
 // so need to check explicitly
 //-----------------------------------------------------------------------------
               pc->addHit(station,hd);
+              if (hd->fHit->energyDep() > _minProtonHitEDep) {
+                pc->fNHighEDepHits += 1;
+              }
               if (_debugLevel > 0) {
                 printf("DeltaFinderAlg::%s: add combo hit sid=%5i station:face: %2i:%i to pc:%3i\n",
                        __func__,hd->fHit->strawId().asUint16(),station,face,pc->index());

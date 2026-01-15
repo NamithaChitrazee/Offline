@@ -18,12 +18,13 @@ namespace mu2e {
     fNStationsWithHits = 0;
     fNHitsTot          = 0;
     fNStrawHitsTot     = 0;
-    fSumEDep           = 0.;
-    fTMid              = 0.;
+    fNHighEDepHits     = 0;
+    fSumEDep           = 0;
+    fTMid              = 0;
 
-    fT0                = 0.f;
-    fDtDz              = 0.f;
-    fSigT0             = 0.f;
+    fT0                = 0;
+    fDtDz              = 0;
+    fSigT0             = 0;
 
     fMcPart            = nullptr;
     fNHitsMcP          = 0;
@@ -44,11 +45,11 @@ namespace mu2e {
       }
     }
 
-    fSt  = 0.;
-    fSz  = 0.;
-    fSt2 = 0.;
-    fStz = 0.;
-    fSz2 = 0.;
+    fSt  = 0;
+    fSz  = 0;
+    fSt2 = 0;
+    fStz = 0;
+    fSz2 = 0;
   }
 //-----------------------------------------------------------------------------
 // first added seed has at least one stereo, so the COG calculation COG is safe
@@ -119,6 +120,7 @@ namespace mu2e {
         }
       }
     }
+    fNHighEDepHits += Seed->nHighEDepHits();
 //-----------------------------------------------------------------------------
 // knowing phi may be helpful
 //-----------------------------------------------------------------------------
