@@ -16,6 +16,7 @@ namespace fhicl {
 #include "fhiclcpp/types/Table.h"
 
 #include "Offline/DataProducts/inc/StrawId.hh"
+#include "Offline/DataProducts/inc/EventWindowMarker.hh"
 #include "Offline/RecoDataProducts/inc/StereoHit.hh"
 #include "Offline/RecoDataProducts/inc/ComboHit.hh"
 #include "Offline/RecoDataProducts/inc/TimeCluster.hh"
@@ -26,6 +27,7 @@ namespace fhicl {
 #include "Offline/Mu2eUtilities/inc/McUtilsToolBase.hh"
 
 #include "Offline/Mu2eUtilities/inc/ManagedList.hh"
+#include "Offline/Mu2eUtilities/inc/StopWatch.hh"
 #include "Offline/CalPatRec/inc/Pzz_t.hh"
 #include "Offline/CalPatRec/inc/ChannelID.hh"
 #include "Offline/CalPatRec/inc/HitData_t.hh"
@@ -87,11 +89,13 @@ namespace mu2e {
       int                     fLast  [kMaxNTimeBins];   //            a vector ? re-create/re-allocate if the event type is different ?
 
       std::vector<HitData_t*> fProtonHitData;
-      int                     fPFirst[kMaxNTimeBins];  // ** FIXME - it is a possibility
-      int                     fPLast [kMaxNTimeBins];  //
+      // int                     fPFirst[kMaxNTimeBins];  // ** FIXME - it is a possibility
+      // int                     fPLast [kMaxNTimeBins];  //
 
       Pzz_t                   fPanel [3];
       double                  z = 0.;           //
+
+      FaceZ_t();
 
       Pzz_t*                  Panel   (int I) { return &fPanel[I]; }
       int                     nHits        () { return fHitData.size(); }
@@ -102,24 +106,30 @@ namespace mu2e {
     };
 
     struct Data_t {
-      const art::Event*             event;
-      const Tracker*                tracker;
-      const DiskCalorimeter*        calorimeter;
+      const art::Event*             event = nullptr;
+      const Tracker*                tracker = nullptr;
+      const DiskCalorimeter*        calorimeter = nullptr;
 
       art::InputTag                 chCollTag;
       art::InputTag                 sdmcCollTag;
 
-      const ComboHitCollection*     chcol;
-      ComboHitCollection*           outputChColl;
+      const ComboHitCollection*     chcol = nullptr;
+      ComboHitCollection*           outputChColl = nullptr;
+      const EventWindowMarker*      ewm = nullptr;
+      float                         timeBin; // time bin size in algorithm
 
-      DeltaFinderAlg*               _finder;
+      DeltaFinderAlg*               _finder = nullptr;
 
-      int                           debugLevel;              // printout level
+      int                           debugLevel = 0;              // printout level
+      int                           doTiming   = 0;              // for timing analysis
+      std::shared_ptr<StopWatch>    watch = nullptr;
 
-      int                           _nComboHits;
-      int                           _nStrawHits;
+      int                           _nComboHits = 0;
+      int                           _nStrawHits = 0;
+      int                           _nTimeBins = kMaxNTimeBins;  // N(time bins) relevant in this event
       std::vector<const ComboHit*>  _v;                      // sorted
 
+      // std::vector<DeltaSeed>        fListOfSeeds       [kNStations];
       ManagedList<DeltaSeed>        fListOfSeeds       [kNStations];
       std::vector<DeltaSeed*>       fListOfProtonSeeds [kNStations];
       std::vector<DeltaSeed*>       fListOfComptonSeeds[kNStations];
@@ -182,6 +192,14 @@ namespace mu2e {
       void        printDeltaSeed     (DeltaSeed*      Seed   , const char* Option = "");
       void        printDeltaCandidate(DeltaCandidate* Delta  , const char* Option = "");
    };
+
+    // Utility function to convert a float to a sortable unsigned 32-bit integer key.
+    uint32_t floatToSortableInt(float f);
+
+    // Function to perform a single pass of Counting Sort on a specific byte
+    void countingSortPass(std::vector<const ComboHit*>& input,
+                          std::vector<const ComboHit*>& output,
+                          const int byte_shift);
 
 //-----------------------------------------------------------------------------
 // finally, utility functions still used by the diag tool

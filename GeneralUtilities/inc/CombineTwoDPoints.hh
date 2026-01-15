@@ -15,10 +15,10 @@ namespace mu2e {
 
     public:
       struct CWT {
-        TwoDWeight wt_{};
-        double dchi0_{0};
-        CWT() = default;  // default ctor ROOT requires
-        CWT(TwoDWeight const& wt, double dchi0) : wt_(wt), dchi0_(dchi0) {}
+      TwoDWeight wt_{}; // weight
+      double dchi0_{0}; // chisquared contribution
+      CWT() = default;
+      CWT(TwoDWeight const& wt, double dchi0) : wt_(wt), dchi0_(dchi0) {}
       };
       CombineTwoDPoints(float intrinsicvar=0.0) : ivar_(intrinsicvar) {} // empty constructor
       // construct from a vector of points; each points index into the vector is its key
