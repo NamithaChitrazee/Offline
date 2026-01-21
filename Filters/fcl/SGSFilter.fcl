@@ -1,12 +1,21 @@
 #include "Offline/fcl/standardServices.fcl"
+
 process_name : SGSFilter
 
 source : {
   module_type: RootInput
 }
 services : @local::Services.Core
-
+services : @local::Services.SimAndReco
+    
 physics : {
+  producers: {
+   StationSteps: {
+     module_type: "StationStepSelector"
+     StrawGasStepTag: "compressDetStepMCs"
+     MinSteps: 10   
+   }
+  }
   filters : {
     SGSFilter : {
       StrawGasStepTag: "compressDetStepMCs"
@@ -14,9 +23,7 @@ physics : {
       module_type: "StrawGasStepFilter"
     }
   }
-  FilterPath: [
-    SGSFilter
-  ]
+  FilterPath: [ SGSFilter]
   e1        : [FilterOutput]
   end_paths : [e1]
 }
@@ -29,12 +36,17 @@ outputs: {
       ]
       module_type: "RootOutput"
       outputCommands: [
-         "keep *_*_*_*"
+         "keep *_*_*_*",
+	 "drop mu2e::StrawGasSteps_compressDetStepMCs__*"
       ]
    }
 }
 
-services.ProditionsService.trackerStatus.Settings.useDb: true
-services.ProditionsService.trackerStatus.Settings.verbose: 2
-#services.DbService.textFile : ["TrackerStatus.txt" ]
-services.DbService.verbose: 2
+outputs.FilterOutput.fileName: "dts.owner.cosmicExtractedFiltered2025.version.sequencer.art"
+
+services.SeedService.baseSeed: 8
+services.SeedService.maxUniqueEngines: 20
+services.ProditionsService.trackerStatus.Settings.useDb: false
+# services.ProditionsService.trackerStatus.Settings.verbose: 2
+# services.DbService.textFile : ["TrackerStatus.txt" ]
+# services.DbService.verbose: 2
