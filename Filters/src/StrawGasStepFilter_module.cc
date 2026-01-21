@@ -7,6 +7,8 @@
 #include "Offline/MCDataProducts/inc/StrawGasStep.hh"
 #include "Offline/ProditionsService/inc/ProditionsHandle.hh"
 #include "Offline/TrackerConditions/inc/TrackerStatus.hh"
+#include "Offline/SeedService/inc/SeedService.hh"
+#include "CLHEP/Random/RandFlat.h"
 
 #include <string>
 
@@ -28,23 +30,26 @@ namespace mu2e{
     virtual bool filter(art::Event& e);
 
   private:
+    ProditionsHandle<TrackerStatus> _trackerStatus_h;
+    art::RandomNumberGenerator::base_engine_t& _engine;
+    CLHEP::RandFlat _randflat;
     art::InputTag _stepsTag;
     size_t        _minSteps;
 
-    ProditionsHandle<TrackerStatus> _trackerStatus_h;
-
-
+    //ProditionsHandle<TrackerStatus> _trackerStatus_h;
   };
 
   StrawGasStepFilter::StrawGasStepFilter(const Parameters& config) :
     art::EDFilter{config},
+     _engine(createEngine( art::ServiceHandle<SeedService>()->getSeed())),
+    _randflat( _engine ),
     _stepsTag(config().stepstag()),
     _minSteps(config().minsteps())
-    {
-    }
-
+  {
+      produces<StrawGasStepCollection>();
+  }
   bool StrawGasStepFilter::filter(art::Event& event)  {
-    auto const& trackerStatus = _trackerStatus_h.getPtr(event.id());
+    /*auto const& trackerStatus = _trackerStatus_h.getPtr(event.id());
 
     size_t count = 0;
     auto steps = event.getValidHandle<StrawGasStepCollection>(_stepsTag);
@@ -53,7 +58,32 @@ namespace mu2e{
       if (!trackerStatus->noSignal(step.strawId()))
         count += 1;
     }
-    return count >= _minSteps;
+    return count >= _minSteps;*/
+    unique_ptr<StrawGasStepCollection> outsteps(new StrawGasStepCollection);
+    auto const& trackerStatus = _trackerStatus_h.getPtr(event.id());
+
+    std::vector<size_t> counts(StrawId::_nstations,0);
+    auto steps = event.getValidHandle<StrawGasStepCollection>(_stepsTag);
+    auto const& stepcol = *steps;
+    for (auto const& step: stepcol){
+      if (!trackerStatus->noSignal(step.strawId()))
+        counts[step.strawId().station()]++;
+    }
+    std::vector<size_t> goodstations;
+    for (size_t i=0;i<StrawId::_nstations;i++){
+      if (counts[i] >= _minSteps)
+        goodstations.push_back(i);
+    }
+    
+    if (goodstations.size() > 0){
+      size_t randStation = _randflat.fireInt(goodstations.size());
+      for (auto const& step: stepcol){
+        if (step.strawId().station() == goodstations[randStation])
+          outsteps->push_back(step);
+      }
+    }
+    event.put(move(outsteps));
+    return (!goodstations.empty());
   }
 }
 
