@@ -375,6 +375,7 @@ namespace mu2e {
     //void findHelix(int tc, int isegment, HelixSeedCollection& HSColl);
     void findHelix(int tc, int isegment, HelixSeedCollection& HSColl, HelixSeed& Temp_HSeed);
     void findHelix_ver2(int tc, int isegment, HelixSeedCollection& HSColl, HelixSeed& Temp_HSeed);
+    void findHelix_ver3(int tc, int isegment);
     void saveHelix(int tc, HelixSeed& Temp_HSeed);
     void segment_check(int tc, int isegment);
     void helix_check(int tc, int isegment);
@@ -390,11 +391,13 @@ namespace mu2e {
     void plot_HelixPhiVsZ(int TC, int isegment);
     void plot_PhiVsZ_forSegment(int tc, int isegment);
     void plot_PhiVsZ_forSegment_ver2(int ith_segment, int jth_segment, double alpha, double beta, double Chi2NDF);
+    void plot_PhiVsZ_forSegment_ver3(int tc, int isegment);
     void plot_PhiVsZ_forEachStep(std::vector<std::vector<ev5_HitsInNthStation>>& ThisIsBestSegmen, const char* filename, int tc, int loopIndex);
     void plot_CirclePhiVsZ_forSegment(int tc, int isegment);
     void plot_2PiAmbiguityPhiVsZ_forSegment(int tc, int isegment);
     void plot_2PiAmbiguityPhiVsZ_forSegment_mod(int tc, int isegment);
     void plot_RVsZ_forSegment(int tc, int isegment);
+    void plot_PhiVsZ_forSegment_debug(int ith_segment, int jth_segment,double alpha,double beta,double Chi2NDF,int plotID,const std::string& stage, bool merged);
     double computeCircleResidual2(size_t& tcHitsIndex, double& xC, double& yC, double& rC);
     void computeCircleError2(size_t& tcHitsIndex, double& xC, double& yC, double& rC);
     double computeCircleError2_ver2(int hitIndice, int nStrawHits, double& xC, double& yC, double& rC);
@@ -429,6 +432,7 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
     std::vector<std::vector<ev5_HitsInNthStation>> all_BestSegmentInfo;
     std::vector<std::vector<ev5_HitsInNthStation>> _segmentHits;//ComboHits and some helper variables for segments
+    std::vector<std::vector<ev5_HitsInNthStation>> _SSegmentHits;//ComboHits and some helper variables for segments
     std::vector<cHit> _tcHits;
     ::LsqSums4 _circleFitter;
     float               _bz0;
@@ -1207,34 +1211,71 @@ namespace mu2e {
       plot_PhiVsZ_forEachStep(_segmentHits, "step_07", tc, 999);
       std::cout<<"mergeSegmentsAll size = "<<_segmentHits.size()<<std::endl;
 
+
+// Print header once
+// Column widths (adjust as needed)
+const int W1 = 12;
+const int W = 14;
+
+// Print header once
+std::cout
+  << "-------------------------------------------------------------------------------------------------------------\n"
+  << std::left
+  << std::setw(W1) << "#Segment"
+  << std::setw(W1) << "k"
+  << std::setw(W)  << "hitIndice"
+  << std::setw(W)  << "hitID"
+  << std::setw(W)  << "station"
+  << std::setw(W)  << "plane"
+  << std::setw(W)  << "face"
+  << std::setw(W)  << "panel"
+  << std::setw(W)  << "segmentIndex"
+  << std::setw(W)  << "used"
+  << std::setw(W)  << "nturn"
+  << std::setw(W)  << "strawhits"
+  << std::setw(W)  << "x"
+  << std::setw(W)  << "y"
+  << std::setw(W)  << "z"
+  << std::setw(W)  << "phi"
+  << std::setw(W)  << "phiDiag"
+  << std::setw(W)  << "helixPhi"
+  << std::setw(W)  << "circleError2"
+  << std::setw(W)  << "helixPhiError2"
+  << "\n"
+  << "-------------------------------------------------------------------------------------------------------------\n";
+
 for (size_t j = 0; j < _segmentHits.size(); ++j) {
-  std::cout << "Segment j=" << j << " nHits=" << _segmentHits[j].size() << "\n";
   for (size_t k = 0; k < _segmentHits[j].size(); ++k) {
+
     const auto& h = _segmentHits[j][k];
 
-    std::cout
-      << "  k=" << k
-      << " hitIndice=" << h.hitIndice
-      << " hitID=" << h.hitID
-      << " station=" << h.station
-      << " plane=" << h.plane
-      << " face=" << h.face
-      << " panel=" << h.panel
-      << " segmentIndex=" << h.segmentIndex
-      << " used=" << h.used
-      << " nturn=" << h.nturn
-      << " strawhits=" << h.strawhits
-      << " x=" << h.x
-      << " y=" << h.y
-      << " z=" << h.z
-      << " phi=" << h.phi
-      << " phiDiag=" << h.phiDiag
-      << " helixPhi=" << h.helixPhi
-      << " circleError2=" << h.circleError2
-      << " helixPhiError2=" << h.helixPhiError2
-      << "\n";
+    // For x, y, z: print with 2 decimal places
+std::cout << std::left
+    << std::setw(W1) << j
+    << std::setw(W1) << k
+    << std::setw(W)  << h.hitIndice
+    << std::setw(W)  << h.hitID
+    << std::setw(W)  << h.station
+    << std::setw(W)  << h.plane
+    << std::setw(W)  << h.face
+    << std::setw(W)  << h.panel
+    << std::setw(W)  << h.segmentIndex
+    << std::setw(W)  << h.used
+    << std::setw(W)  << h.nturn
+    << std::setw(W)  << h.strawhits
+    << std::setw(W)  << std::fixed << std::setprecision(2) << h.x
+    << std::setw(W)  << std::fixed << std::setprecision(2) << h.y
+    << std::setw(W)  << std::fixed << std::setprecision(2) << h.z
+    << std::setw(W)  << h.phi
+    << std::setw(W)  << h.phiDiag
+    << std::setw(W)  << h.helixPhi
+    << std::setw(W)  << h.circleError2
+    << std::setw(W)  << h.helixPhiError2
+    << "\n";
   }
 }
+
+
       //std::cout<<"number_of_merged_segments = "<<number_of_merged_segments<<std::endl;
       //std::cout<<"number_of_merged_segments = "<<_segmentHits.size()<<std::endl;
 /*      // remove duplicate merged segments (in case)
@@ -3568,6 +3609,9 @@ void PhiZSeedFinder::mergeSegmentsAll(
     double thre_residual
 ) {
     std::cout << "mergeSegmentsAll" << std::endl;
+    int _phiZPlotCounter = 0;
+    int plotID = _phiZPlotCounter++;
+
     //initialization
    for (size_t segIdx = 0; segIdx < all_ThisIsBestSegment.size(); ++segIdx) {
     for (auto &hit : all_ThisIsBestSegment[segIdx]) {
@@ -4061,12 +4105,52 @@ std::cout << "z(delta_phi/combined_err) = " << Z << std::endl;
 std::cout << "canMerge[0] = " << (canMerge[0] ? "true" : "false") << std::endl;
 std::cout << "canMerge[1] = " << (canMerge[1] ? "true" : "false") << std::endl;
 std::cout << "canMerge[2] = " << (canMerge[2] ? "true" : "false") << std::endl;
+
                   //shift 2 pi for
                   if (1 == canMerge[0] * canMerge[1] * canMerge[2]) {
                     for (size_t i = 0; i < all_ThisIsBestSegment[testIdx].size(); i++) {
                       all_ThisIsBestSegment[testIdx][i].nturn = deltaCorrection;
                     }
                   }
+
+// =======================================================
+// DEBUG: Phi vs Z plot BEFORE merge decision
+// =======================================================
+
+// Increment global plot ID (never decreases)
+    _phiZPlotCounter++;
+    plotID = _phiZPlotCounter++;
+// Use original segmentIndex for stable labeling
+//int refSegLabel  = all_ThisIsBestSegment[refIdx].front().segmentIndex;
+//int testSegLabel = all_ThisIsBestSegment[testIdx].front().segmentIndex;
+
+  _SSegmentHits = all_ThisIsBestSegment;
+// Plot ref segment
+plot_PhiVsZ_forSegment_debug(
+    refIdx,
+    testIdx,
+    slope_alpha,
+    slope_beta,
+    ChiNDF,
+    plotID,
+    "REF (before decision)",
+    false   // not merged yet
+);
+
+    plotID = _phiZPlotCounter++;
+// Plot test segment
+plot_PhiVsZ_forSegment_debug(
+    testIdx,
+    refIdx,
+    test_slope_alpha,
+    test_slope_beta,
+    test_ChiNDF,
+    plotID,
+    "TEST (before decision)",
+    false
+);
+
+
                   // ===== merge testIdx into refIdx =====
                   if (1 == canMerge[0] * canMerge[1] * canMerge[2]) {
                     std::cout << "   --> Merged testIdx " << testIdx
@@ -4122,7 +4206,97 @@ std::cout << "canMerge[2] = " << (canMerge[2] ? "true" : "false") << std::endl;
         continue;
     }
     std::cout << "Final #segments = " << all_ThisIsBestSegment.size() << std::endl;
+} //end mergeSegmentsAll
+
+//----------------------------------------------------------------------------
+void PhiZSeedFinder::plot_PhiVsZ_forSegment_debug(
+    int ith_segment,
+    int jth_segment,
+    double alpha,
+    double beta,
+    double Chi2NDF,
+    int plotID,
+    const std::string& stage,
+    bool merged
+) {
+    TGraphErrors* gr = new TGraphErrors();
+    gr->SetMarkerStyle(20);
+    gr->SetMarkerSize(0.8);
+    gr->SetMarkerColor(merged ? kGreen+2 : kRed);
+    std::cout<<"plot_PhiVsZ_forSegment_debug"<<std::endl;
+    std::cout<<"segment/plotID = "<<ith_segment<<"/"<<plotID<<std::endl;
+    std::cout<<"segment.size = "<<_SSegmentHits.at(ith_segment).size()<<std::endl;
+
+    for (size_t j = 0; j < _SSegmentHits.at(ith_segment).size(); j++) {
+        const auto& hit = _SSegmentHits.at(ith_segment).at(j);
+        double z   = hit.z;
+        double phi = hit.helixPhi + hit.nturn * 2 * M_PI;
+        gr->SetPoint(j, z, phi);
+        std::cout<<"j: "<<j<<", z/phi = "<<z<<"/"<<phi<<std::endl;
+        gr->SetPointError(j, 0.0, std::sqrt(hit.helixPhiError2));
+    }
+
+    /*for (size_t j = 0; j < _tcHits.size(); j++) {
+        if(_tcHits[j].used == false) continue;
+        double z   = _tcHits[j].z;
+        double phi = _tcHits[j].helixPhi;
+        gr->SetPoint(j, z, phi);
+        gr->SetPointError(j, 0.0, std::sqrt(_tcHits[j].helixPhiError2));
+    }*/
+
+    TCanvas* canvas = new TCanvas(Form("c_%d", plotID), "", 800, 600);
+    canvas->SetMargin(0.1, 0.1, 0.1, 0.1);
+
+    gr->Draw("AP");
+    gr->GetXaxis()->SetTitle("Z [mm]");
+    gr->GetYaxis()->SetTitle("Phi [rad]");
+    gr->GetXaxis()->SetLimits(-1600, 1600);
+    gr->GetYaxis()->SetRangeUser(-5*M_PI, 5*M_PI);
+
+    // ===== Title =====
+    TPaveText* title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
+    title->SetFillColor(0);
+    title->SetTextAlign(22);
+    title->AddText(Form(
+        "Phi vs Z | %s | plotID=%d | seg %d vs %d | merged=%s",
+        stage.c_str(),
+        plotID,
+        ith_segment,
+        jth_segment,
+        merged ? "YES" : "NO"
+    ));
+    title->Draw("same");
+
+    // ===== Fit line =====
+    double x_min = -1600, x_max = 1600;
+    TLine* fitLine = new TLine(
+        x_min, alpha * x_min + beta,
+        x_max, alpha * x_max + beta
+    );
+    fitLine->SetLineStyle(2);
+    fitLine->SetLineWidth(2);
+    fitLine->Draw("same");
+
+    // ===== Params =====
+    TLatex text;
+    text.SetTextSize(0.035);
+    text.DrawLatexNDC(0.15, 0.85, Form("alpha = %.6e", alpha));
+    text.DrawLatexNDC(0.15, 0.80, Form("beta  = %.6e", beta));
+    text.DrawLatexNDC(0.15, 0.75, Form("#chi^{2}/ndf = %.3f", Chi2NDF));
+
+    canvas->SaveAs(Form(
+        "/exp/mu2e/data/users/kitagawa/output/20240424/"
+        "PhiZSeedFinder/pbar/debug/PhiVsZ_debug_%06d.pdf",
+        plotID
+    ));
+
+    delete fitLine;
+    delete title;
+    delete canvas;
+    delete gr;
 }
+
+
 //-----------------------------------------------------------------------------
   void PhiZSeedFinder::ev5_select_best_segments_step_07(std::vector<std::vector<ev5_HitsInNthStation>>& all_BestSegmentInfo, std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag, double threshold_deltaphi, int& NumberOfSegments){
       std::cout << "-----------------------------------" << std::endl;
@@ -4398,6 +4572,7 @@ std::cout << "canMerge[2] = " << (canMerge[2] ? "true" : "false") << std::endl;
     _segmentHits = hitsIn_best_segments;
     NumberOfSegments = (int)hitsIn_best_segments.size();
   }//end ev5_select_best_segments_step_07
+
 //-----------------------------------------------------------------------------
   void PhiZSeedFinder::ev5_select_best_segments_step_08(std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag, double threshold_deltaphi, int& NumberOfSegments){
       //std::cout << "-----------------------------------" << std::endl;
@@ -4518,6 +4693,7 @@ std::cout << "canMerge[2] = " << (canMerge[2] ? "true" : "false") << std::endl;
     all_ThisIsBestSegment_Diag = temp_ThisIsBestSegment_Diag;
     //std::cout<<"ThisIsBestSegment size = "<<all_ThisIsBestSegment.size()<<std::endl;
   }//end ev5_select_best_segments_step_08
+
 //-----------------------------------------------------------------------------
 // finding circle from triplet
 //-----------------------------------------------------------------------------
@@ -4535,6 +4711,7 @@ void PhiZSeedFinder::initTriplet(triplet& trip, int& outcome) {
   //}
   outcome = 1;
 }
+
 //-----------------------------------------------------------------------------
 // fill vector with hits of a segment to search for helix
 //-----------------------------------------------------------------------------
@@ -4868,14 +5045,11 @@ void PhiZSeedFinder::plot_HelixPhiVsZ(int TC, int isegment){
    //std::cout<<"Helix Phi z/phi = "<<j<<"/"<<z<<"/"<<phi<<std::endl;
    gr[0]->SetPoint(index[0]++, z, helixPhi);
    gr[1]->SetPoint(index[1]++, z, phi);
-   double xC = 0.0;
-   double yC = 0.0;
-   computeHelixPhi(j, xC, yC);
    double phiWeight = 1.0 / (_tcHits[j].helixPhiError2);
    _lineFitter.addPoint(z, phi, phiWeight);
   }
-  //graph->Add(gr[0],"AP");
-  graph->Add(gr[1],"AP");
+  graph->Add(gr[0],"AP");
+  //graph->Add(gr[1],"AP");
   //Draw
   TCanvas *canvas = new TCanvas("canvas", "My TGraph", 800, 600);
   canvas->SetMargin(0.1, 0.1, 0.1, 0.1);
@@ -4883,7 +5057,7 @@ void PhiZSeedFinder::plot_HelixPhiVsZ(int TC, int isegment){
   graph->GetXaxis()->SetTitle("Z [mm]");
   graph->GetYaxis()->SetTitle("Helix Phi [rad]");
   graph->GetXaxis()->SetLimits(-1600, 1600);
-  graph->GetYaxis()->SetRangeUser(-M_PI, M_PI);
+  graph->GetYaxis()->SetRangeUser(-4*M_PI, 4*M_PI);
   // Add title at the top
   TPaveText *title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
   std::stringstream eventStringStream;
@@ -4897,14 +5071,15 @@ void PhiZSeedFinder::plot_HelixPhiVsZ(int TC, int isegment){
   TLine *line[18];
   for(int j=0; j<18; j++){
     double x = stations_x[j];
-    line[j] = new TLine(x, -M_PI, x, M_PI);
+    line[j] = new TLine(x, -4*M_PI, x, 4*M_PI);
     line[j]->SetLineStyle(2);  // Dashed line style
     line[j]->SetLineWidth(1);
     line[j]->SetLineColor(kBlack);
     line[j]->Draw("same");
   }
+
   // Draw the fitted slope line: y = dydx * x + y0 from x = -1600 to 1600
-  double x_min = -1600;
+  /*double x_min = -1600;
   double x_max = 1600;
   double y_min = _lineFitter.dydx() * x_min + _lineFitter.y0();
   double y_max = _lineFitter.dydx() * x_max + _lineFitter.y0();
@@ -4912,9 +5087,10 @@ void PhiZSeedFinder::plot_HelixPhiVsZ(int TC, int isegment){
   fitLine->SetLineColor(kBlack);
   fitLine->SetLineStyle(2);  // Dashed line
   fitLine->SetLineWidth(2);
-  fitLine->Draw("same");
+  fitLine->Draw("same");*/
+
 // Draw manual fit parameters text
-TLatex paramsText;
+/*TLatex paramsText;
 paramsText.SetTextSize(0.04);
 paramsText.SetTextAlign(13);
 double textX = 0.15;
@@ -4922,7 +5098,7 @@ double textY = 0.85;
 paramsText.DrawLatexNDC(textX, textY,        Form("LsqSums2 fit dydx: %f", _lineFitter.dydx()));
 paramsText.DrawLatexNDC(textX, textY - 0.05, Form("LsqSums2 fit y0: %f", _lineFitter.y0()));
 paramsText.DrawLatexNDC(textX, textY - 0.10, Form("LsqSums2 fit #chi^{2}/ndf: %f", _lineFitter.chi2Dof()));
-   canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/HelixPhi/pbar_PhiVsZ-%04d-%04d-%06d_TC-%d_Segemnt_%d.pdf", run, subrun, eventNumber, TC, isegment));
+*/   canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/HelixPhi/pbar_PhiVsZ-%04d-%04d-%06d_TC-%d_Segemnt_%d.pdf", run, subrun, eventNumber, TC, isegment));
    //canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/ce/PhiVsZ/HelixPhi/pbar_PhiVsZ-%04d-%04d-%06d_TC-%d.pdf", run, subrun, eventNumber, TC));
   //delete
   delete canvas;
@@ -5201,6 +5377,101 @@ void PhiZSeedFinder::plot_PhiVsZ_forSegment_ver2(int ith_segment, int jth_segmen
   delete gr;
   for(int j=0; j<18; j++) delete line[j];
 }
+//----------------------------------------------------------------------------
+void PhiZSeedFinder::plot_PhiVsZ_forSegment_ver3(int tc, int isegment){
+  const int n = (int)_segmentHits.at(isegment).size();
+  TGraph *gr = new TGraph(n);
+  gr->SetTitle("");
+  gr->SetMarkerStyle(1);
+  double phi, z;
+  std::vector<int> marker_color;
+  std::vector<int> marker_style;
+  std::vector<double> marker_size;
+    std::cout<<"Fill "<<std::endl;
+  for(int i=0; i<n; i++) {
+   double z = _segmentHits.at(isegment).at(i).z;
+   double phi = _segmentHits.at(isegment).at(i).helixPhi;
+   int index = _segmentHits.at(isegment).at(i).hitIndice;
+   int alreadyfill = 0;
+   for (size_t j = 0; j < _data.tccol->at(tc)._strawHitIdxs.size(); j++) {
+    int hitIndice = _data.tccol->at(tc)._strawHitIdxs[j];
+    if(index != hitIndice) continue;
+    if(alreadyfill == 1) continue;
+    std::vector<StrawDigiIndex> shids;
+    _data.chcol->fillStrawDigiIndices(hitIndice, shids);
+    //z = _data.chcol->at(hitIndice).pos().z();
+    //phi = _data.chcol->at(hitIndice).pos().phi();
+    std::cout<<"z/phi/station = "<<z<<"/"<<phi<<"/"<<_segmentHits.at(isegment).at(i).station<<std::endl;
+    for (size_t k = 0; k < shids.size(); k++) {
+      const mu2e::SimParticle* _simParticle;
+      _simParticle = _mcUtils->getSimParticle(_event, shids[k]);
+      //int SimID = _mcUtils->strawHitSimId(_event, shids[j]);
+      int PdgID = _simParticle->pdgId();
+      int   style(0), color(0);
+      double size(0.);
+      if (PdgID ==  11) {style = 20; size = 0.8; color = kRed;}
+      else if (PdgID ==  -11) {style = 24; size = 0.8; color = kBlue;}
+      else if (PdgID ==  13) {style = 20; size = 0.8; color = kGreen+2;}
+      else if (PdgID ==  -13) {style = 20; size = 0.8; color = kGreen-2;}
+      else if (PdgID ==  2212) {style = 20; size = 0.8; color = kBlue+2;}
+      else if (PdgID ==  -211) {style = 20; size = 0.8; color = kPink+2;}
+      else if (PdgID ==  211) {style = 20; size = 0.8; color = kPink-2;}
+      else {style = 20; size = 0.8; color = kMagenta;}
+      marker_color.push_back(color);
+      marker_style.push_back(style);
+      marker_size.push_back(size);
+      alreadyfill = 1;
+      break;
+    }
+   }
+    gr->SetPoint(i, z, phi);
+   }
+  //Draw
+  TCanvas *canvas = new TCanvas("canvas", "", 800, 600);
+  canvas->SetMargin(0.1, 0.1, 0.1, 0.1);
+  gr->Draw("AP");
+  TMarker *m;
+    std::cout<<"Draw "<<std::endl;
+  for (int i = 0; i < n; i++) {
+    gr->GetPoint(i, z, phi);
+    std::cout<<"z/phi = "<<z<<"/"<<phi<<std::endl;
+    m = new TMarker(z, phi, 20);
+    //m->SetMarkerColor(i + 1);// Setting marker color with different color for each point
+    m->SetMarkerStyle(marker_style[i]);
+    m->SetMarkerSize(marker_size[i]);
+    m->SetMarkerColor(marker_color[i]);// Setting marker color with different color for each point
+    m->Draw();// Draw marker with different color
+  }
+  gr->GetXaxis()->SetTitle("Z [mm]");
+  gr->GetYaxis()->SetTitle("HelixPhi [rad]");
+  gr->GetXaxis()->SetLimits(-1600, 1600);
+  gr->GetYaxis()->SetRangeUser(-M_PI, M_PI);
+  // Add title at the top
+  TPaveText *title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
+  std::stringstream eventStringStream;
+  eventStringStream << "run: " << run << " subRun: " << subrun << " event: " << eventNumber;
+  title->AddText(Form("Phi vs. Z (Run-subRun-Event, TC, #cand) = (%d-%d-%d, %d, #%d) (pbar1b0)", run, subrun, eventNumber, tc, isegment));
+  title->SetFillColor(0);
+  title->SetTextAlign(22);
+  title->Draw("same");
+  //Draw vertical lines at specified X-coordinate of stations (18 stations)
+  double stations_x[18] = {-1518.320, -1344.320, -1170.320, -996.320, -822.320, -648.320, -474.320, -300.320, -126.320, 47.680, 221.680, 395.680, 569.680, 743.680, 917.680, 1091.680, 1265.680, 1439.680};
+  TLine *line[18];
+  for(int j=0; j<18; j++){
+    double x = stations_x[j];
+    line[j] = new TLine(x, -M_PI, x, M_PI);
+    line[j]->SetLineStyle(2);  // Dashed line style
+    line[j]->SetLineWidth(1);
+    line[j]->SetLineColor(kBlack);
+    line[j]->Draw("same");
+  }
+   canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/PhiVsZ_forSegment_ver3/pbar_PhiVsZ-%04d-%04d-%06d_TC_%d-%d.pdf", run, subrun, eventNumber, tc, isegment));
+  //delete
+  delete canvas;
+  delete gr;
+  for(int j=0; j<18; j++) delete line[j];
+}
+
 //-----------------------------------------------------------------------------
 void PhiZSeedFinder::plot_CirclePhiVsZ_forSegment(int tc, int isegment){
     _circleFitter.clear();
@@ -7393,6 +7664,274 @@ std::cout << std::setprecision(4)
           << std::endl;
     } //end findHelix_ver2
 
+//-----------------------------------------------------------------------------
+  void PhiZSeedFinder::findHelix_ver3(int tc, int isegment) {
+    std::cout<<"findHelix_ver3"<<std::endl;
+    _circleFitter.clear();
+    //Step1: fit circle of the segment with fixed weight
+    size_t nComboHitsInSegment = _tcHits.size();
+    for(size_t i=0; i<nComboHitsInSegment; i++){
+      if(_tcHits[i].used == false) continue;
+      double x = _tcHits.at(i).x;
+      double y = _tcHits.at(i).y;
+      double wP = 0.1;//tentative value
+      _circleFitter.addPoint(x, y, wP);
+    }
+    double xC = _circleFitter.x0();
+    double yC = _circleFitter.y0();
+    double rC = _circleFitter.radius();
+
+    //Step2: fit circle of the segment with corrected weight
+    xC = _circleFitter.x0();
+    yC = _circleFitter.y0();
+    rC = _circleFitter.radius();
+    _circleFitter.clear();
+    for(size_t i=0; i<nComboHitsInSegment; i++){
+      if(_tcHits[i].used == false) continue;
+      computeCircleError2(i, xC, yC, rC);
+      double x = _tcHits.at(i).x;
+      double y = _tcHits.at(i).y;
+      double wP = 1.0 / (_tcHits[i].circleError2);
+      _circleFitter.addPoint(x, y, wP);
+    }
+    xC = _circleFitter.x0();
+    yC = _circleFitter.y0();
+    rC = _circleFitter.radius();
+
+      std::cout << "  rC = " << rC
+                << "  rcent = " << sqrt(xC*xC + yC*yC)
+                << "  fcent = " << polyAtan2(yC, xC)
+                << "  chi2dXY = " << _circleFitter.chi2DofCircle()
+                << std::endl;
+
+    //Step3: calculate helixPhi and helixPhiError
+    for(size_t i=0; i<nComboHitsInSegment; i++){
+      if(_tcHits[i].used == false) continue;
+      computeCircleError2(i, xC, yC, rC);//update circle error
+      int hitIndice = _tcHits[i].hitIndice;
+      double helixPhi = 0.0, helixPhiError2 = 0.0;
+      computeHelixPhi_ver2(hitIndice, xC, yC, helixPhi, helixPhiError2);
+      _tcHits[i].helixPhi = helixPhi;
+      _tcHits[i].helixPhiError2 = helixPhiError2;
+    }
+
+    _lineFitter.clear();
+    // Containers for per-segment centroids
+    std::vector<int>    segIndexList;
+    std::vector<double> segZc;
+    std::vector<double> segPhic;
+    std::vector<double> segdPhidZ;
+    std::vector<double> segPhi0;
+
+    // Step 1: find unique segmentIndex values
+    std::set<int> uniqueSegmentIndices;
+    for (const auto &hit : _tcHits) {
+      uniqueSegmentIndices.insert(hit.segmentIndice);
+    }
+
+    std::cout << "Number of unique segmentIndex values = "
+    << uniqueSegmentIndices.size() << std::endl;
+
+    // Step 2: process each segmentIndex independently
+    for (int segIdx : uniqueSegmentIndices) {
+
+      // Step A: collect hit indices for this segmentIndex
+      std::vector<size_t> hitIdx;
+      for (size_t i = 0; i < nComboHitsInSegment; ++i) {
+        if (!_tcHits[i].used) continue;
+        if (_tcHits[i].segmentIndice == segIdx) {
+          hitIdx.push_back(i);
+        }
+      }
+
+      if (hitIdx.size() < 3) {
+        std::cout << "Segment " << segIdx
+                  << ": not enough hits (" << hitIdx.size() << ")\n";
+        continue;
+      }
+
+      //Step B: sort hits by z
+      std::sort(hitIdx.begin(), hitIdx.end(),
+          [&](size_t a, size_t b) {
+            return _tcHits[a].z < _tcHits[b].z;
+          });
+
+      //Step C: direction-aware phi unwrapping
+      std::vector<double> phi_unwrapped;
+      phi_unwrapped.reserve(hitIdx.size());
+
+      phi_unwrapped.push_back(_tcHits[hitIdx[0]].helixPhi);
+
+      for (size_t i = 1; i < hitIdx.size(); ++i) {
+        size_t idx = hitIdx[i];
+
+        double phi_raw  = _tcHits[idx].helixPhi;
+        double phi_prev = phi_unwrapped.back();
+
+        double best_phi = phi_raw;
+        double min_diff = std::abs(phi_raw - phi_prev);
+
+        // allow multi-turns
+        for (int k = -3; k <= 3; ++k) {
+          double candidate = phi_raw + k * 2.0 * M_PI;
+          double diff = std::abs(candidate - phi_prev);
+          if (diff < min_diff) {
+            min_diff = diff;
+            best_phi = candidate;
+          }
+        }
+
+        phi_unwrapped.push_back(best_phi);
+      }
+
+      //Step D: slope-consistency safeguard
+      for (size_t i = 2; i < phi_unwrapped.size(); ++i) {
+        double dphi1 = phi_unwrapped[i-1] - phi_unwrapped[i-2];
+        double dphi2 = phi_unwrapped[i]   - phi_unwrapped[i-1];
+
+        if (dphi1 * dphi2 < 0 && std::abs(dphi2) > M_PI/2) {
+          phi_unwrapped[i] += (dphi1 > 0 ? +2*M_PI : -2*M_PI);
+        }
+      }
+
+
+      //Step E: phi–z fit using _lineFitter
+      _lineFitter.clear();
+      for (size_t i = 0; i < hitIdx.size(); ++i) {
+        size_t idx = hitIdx[i];
+        double z   = _tcHits[idx].z;
+        double phi = phi_unwrapped[i];
+        double w   = 1.0 / _tcHits[idx].helixPhiError2;
+
+        _lineFitter.addPoint(z, phi, w);
+      }
+
+      //Step F: retrieve fit results
+      double dphidz     = _lineFitter.dydx();
+      double dphidzErr  = _lineFitter.dydxErr();
+      double phi0       = _lineFitter.y0();
+      double phi0Err    = _lineFitter.y0Err();
+      double chi2ndf    = _lineFitter.chi2Dof();
+
+      //Step G: debug print (strongly recommended)
+      std::cout << "SegmentIndex " << segIdx << std::endl;
+      std::cout << std::fixed << std::setprecision(7)
+                << "  dphi/dz = " << dphidz
+                << "  err = "    << dphidzErr
+                << std::endl;
+
+      std::cout << "  phi0 = " << phi0
+                << "  err = " << phi0Err
+                << "  chi2/ndf = " << chi2ndf
+                << "  nHits = " << hitIdx.size()
+                << std::endl;
+
+
+      for (size_t i = 0; i < hitIdx.size(); ++i) {
+        size_t idx = hitIdx[i];
+        std::cout << "  z=" << _tcHits[idx].z
+                  << " helixPhi =" << _tcHits[idx].helixPhi
+                  << " phi_unwrapped=" << phi_unwrapped[i]
+                  << std::endl;
+        _tcHits[idx].helixPhi = phi_unwrapped[i];
+      }
+
+      //Step H: weighted centroid
+      double sumW = 0.0;
+      double sumZ = 0.0;
+      double sumP = 0.0;
+
+      for (size_t i = 0; i < hitIdx.size(); ++i) {
+        size_t idx = hitIdx[i];
+        double w = 1.0 / _tcHits[idx].helixPhiError2;
+
+        sumW += w;
+        sumZ += w * _tcHits[idx].z;
+        sumP += w * phi_unwrapped[i];
+      }
+
+      double zCentroid   = sumZ / sumW;
+      double phiCentroid = sumP / sumW;
+
+      segIndexList.push_back(segIdx);
+      segZc.push_back(zCentroid);
+      segPhic.push_back(phiCentroid);
+      segdPhidZ.push_back(dphidz);
+      segPhi0.push_back(phi0);
+
+      // Debug print
+      std::cout << "SegmentIndex " << segIdx
+      << " z Center=" << zCentroid
+      << " phi Center=" << phiCentroid
+      << " nHits=" << hitIdx.size() << std::endl;
+
+    }
+
+    // Step 3: align segment centroids by ±2π
+    if (segIndexList.empty()) return;
+
+    // Ste 4: choose the reference which has the largest number of hits
+    // work in progress
+
+    int iRef = 0;
+    //double phiRef = segPhic[iRef];
+    //double zRef   = segZc[iRef];
+    std::cout << "segIndexList.size() = " << segIndexList.size() << std::endl;
+    for (size_t i = 0; i < segIndexList.size(); ++i) {
+    std::cout
+        << "SegmentIndex=" << segIndexList[i]
+        << "  zCenter=" << segZc[i]
+        << "  phiCenter=" << segPhic[i]
+        << "  dPhidZ=" << segdPhidZ[i]
+        << "  phi0=" << segPhi0[i]
+        << std::endl;
+}
+
+
+    for (int i = 0; i < (int)segIndexList.size(); ++i) {
+      if(i == iRef){
+        for (int j = 0; j < (int)_tcHits.size(); j++) {
+          if (_tcHits[j].segmentIndice == segIndexList[iRef]) _tcHits[j].nturn = 0;
+        }
+      }
+
+      //predicted phi at z[i]
+      double predictPhi = segdPhidZ[iRef] * segZc[i] + segPhi0[iRef];
+      //double phi0 = segPhic[i];
+      //double deltaPhi = phi0 - phiRef;
+      double deltaPhi = predictPhi - segPhic[i];
+      int nturn = std::round(deltaPhi / (2 * M_PI));
+
+      std::cout << "i = " << i <<", Align segment " << segIndexList[i]
+                << " shift = " << nturn << "\n" <<std::endl;
+
+      // store shifted centroid if needed
+      //segPhic[i] = bestPhi;
+      for (int j = 0; j < (int)_tcHits.size(); j++) {
+        if (_tcHits[j].segmentIndice != segIndexList[i]) continue;
+        _tcHits[j].helixPhi = _tcHits[j].helixPhi + nturn * 2 * M_PI;
+      }
+    }
+
+    //fit phi-z with corrected helixPhi after 2pi shift
+    _lineFitter.clear();
+    for(size_t i=0; i<nComboHitsInSegment; i++){
+      if(_tcHits[i].used == false) continue;
+      double z = _tcHits[i].z;
+      double phi = _tcHits[i].helixPhi;
+      double phiWeight = 1.0 / (_tcHits[i].helixPhiError2);
+      _lineFitter.addPoint(z, phi, phiWeight);
+        std::cout << "  z=" << _tcHits[i].z
+                  << " helixPhi =" << _tcHits[i].helixPhi
+                  << std::endl;
+    }
+
+      std::cout << "LineFitter "
+      << " dPhidZ =" << _lineFitter.dydx()
+      << " Phi0 =" << _lineFitter.y0()
+      << " chi2dZPhi =" << _lineFitter.chi2Dof() << std::endl;
+
+    } //end findHelix_ver3
 
 //-----------------------------------------------------------------------------
   void PhiZSeedFinder::saveHelix(int tc, HelixSeed& Temp_HSeed){
@@ -9000,22 +9539,61 @@ for (int i = 0; i < _data.nSeeds(); ++i) {
         for(int k=0; k<(int)_segmentHits.at(j).size(); k++){
           hit_count =  _segmentHits.at(j).at(k).strawhits + hit_count;
         }
-        std::cout<<"Segment #/ComboHits/StrawHits = "<<j<<"/"<<(int)_segmentHits.at(j).size()<<"/"<<hit_count<<std::endl;
+        //std::cout<<"Segment #/ComboHits/StrawHits = "<<j<<"/"<<(int)_segmentHits.at(j).size()<<"/"<<hit_count<<std::endl;
       }
       for(int j=0; j<nSegments; j++){
         tcHitsFill(j);
+        findHelix_ver3(i, j);//maybe we can delete this ver2 as well (no need anymore),_hsColl is not filled, make sure if parametrs are added into _hsColl
       //-----------------------------------------------
       // Pre-selection on hits of helix candidate
       //-----------------------------------------------
+      // Column widths (adjust as needed)
+      const int W1 = 12;
+      const int W = 14;
+
+      // Print header once
+      std::cout
+        << "-------------------------------------------------------------------------------------------------------------\n"
+        << std::left
+        << std::setw(W1) << "#Segment"
+        << std::setw(W)  << "segmentIndex"
+        << std::setw(W)  << "used"
+        << std::setw(W)  << "nturn"
+        << std::setw(W)  << "x"
+        << std::setw(W)  << "y"
+        << std::setw(W)  << "z"
+        << std::setw(W)  << "phi"
+        << std::setw(W)  << "helixPhi"
+        << std::setw(W)  << "helixPhiError2"
+        << "\n"
+        << "-------------------------------------------------------------------------------------------------------------\n";
+
+        for (size_t k = 0; k < _tcHits.size(); ++k) {
+
+          const auto& h = _tcHits[k];
+
+          std::cout << std::left
+            << std::setw(W1) << j
+            << std::setw(W)  << h.segmentIndice
+            << std::setw(W)  << h.used
+            << std::setw(W)  << h.nturn
+            << std::setw(W)  << h.x
+            << std::setw(W)  << h.y
+            << std::setw(W)  << h.z
+            << std::setw(W)  << h.phi
+            << std::setw(W)  << h.helixPhi
+            << std::setw(W)  << h.helixPhiError2
+            << "\n";
+        }
+
+      plot_PhiVsZ_forSegment_ver3(i, j);
       std::cout<<"Pre-selection"<<std::endl;
-      int thre_strawhits = 0;
-      std::cout<<"segment j/combohits = "<<j<<"/"<<_segmentHits.at(j).size()<<"/"<<std::endl;
-      for(int l=0; l<(int)_segmentHits.at(j).size(); l++){
-        std::cout<<"strawhits = "<<_segmentHits.at(j).at(l).strawhits<<std::endl;
-        thre_strawhits = thre_strawhits + _segmentHits.at(j).at(l).strawhits;
-        std::cout<<"thre_strawhits = "<<thre_strawhits<<std::endl;
+      int snhits = 0;
+      for (size_t k = 0; k < _tcHits.size(); k++) {
+            if(_tcHits[k].used == false) continue;
+            snhits = snhits + _tcHits[k].strawhits;
       }
-      if(thre_strawhits < 15) continue;
+      if(snhits < 15) continue;
         //define Helix
         //HelixSeed temp_hseed;
         //findHelix(i, j, *_hsColl);
@@ -9046,7 +9624,33 @@ for (int i = 0; i < _data.nSeeds(); ++i) {
       //std::cout<<"_ev_hseed_helix = "<< _ev_hseed._helix._helicity <<std::endl;
           HelixSeed   _ev_hseed;
           //findHelix(i, j, *_hsColl, _ev_hseed);//maybe we can delete this function(no need anymore), _hsColl is not filled, make sure if parametrs are added into _hsColl
-          findHelix_ver2(i, j, *_hsColl, _ev_hseed);////maybe we can delete this ver2 as well (no need anymore),_hsColl is not filled, make sure if parametrs are added into _hsColl
+          //findHelix_ver2(i, j, *_hsColl, _ev_hseed);////maybe we can delete this ver2 as well (no need anymore),_hsColl is not filled, make sure if parametrs are added into _hsColl
+
+          double xC = _circleFitter.x0();
+          double yC = _circleFitter.y0();
+          double rC = _circleFitter.radius();
+          _ev_hseed._helix._radius = rC;
+          _ev_hseed._helix._rcent  = sqrt(xC*xC + yC*yC);
+          _ev_hseed._helix._fcent  = polyAtan2(yC, xC);
+          //_ev_hseed._helix._lambda = 1.0/_dphidz;
+          //_ev_hseed._helix._fz0    = fz0;
+          _ev_hseed._helix._helicity = _ev_hseed._helix._lambda > 0 ? Helicity::poshel : Helicity::neghel;
+          _ev_hseed._helix._chi2dXY = _circleFitter.chi2DofCircle();
+          //_ev_hseed._helix._chi2dZPhi = _lineFitter.chi2Dof();
+          std::cout.setf(std::ios::fixed);
+          std::cout << std::setprecision(4)
+                << "[_ev_hseed Helix]\n"
+                << "  radius      = " << rC      << " [mm]\n"
+                << "  rcent       = " << _ev_hseed._helix._rcent       << " [mm]\n"
+                << "  fcent(rad)  = " << _ev_hseed._helix._fcent       << " [rad]\n"
+                << "  center(x,y) = (" << xC << ", " << yC << ") [mm]\n"
+                << "  dydx      = " <<  _lineFitter.dydx()  << " [mm/rad]\n"
+                << "  lambda      = " <<  1.0/_lineFitter.dydx()  << " [mm/rad]\n"
+                //<< "  fz0(rad)    = " << H._fz0         << " [rad]\n"
+                //<< "  tanDip      = " << tanDip         << " (= lambda/|radius|)\n"
+                //<< "  helicity    = " << (H._helicity==Helicity::poshel ? "poshel" : "neghel") << "\n"
+                //<< "  chi2dXY     = " << H._chi2dXY
+                << std::endl;
         std::cout<<"CROSSCHECK111"<<std::endl;
         if (_diagLevel > 0) {
           //plot_PhiVsZ_forSegment(i, j);
@@ -9056,16 +9660,38 @@ for (int i = 0; i < _data.nSeeds(); ++i) {
 
           //plot here
           //plot_2PiAmbiguityPhiVsZ_forSegment_mod(i, j);
-          //plot_HelixPhiVsZ(i, j);
+          plot_HelixPhiVsZ(i, j);
         }
         std::cout<<"CROSSCHECK222"<<std::endl;
         _dphidz = _lineFitter.dydx();
         _ev_hseed._helix._fz0    = _lineFitter.y0();
         if (_ev_hseed._helix._fz0 > M_PI) { _ev_hseed._helix._fz0 = _ev_hseed._helix._fz0 - 2 * M_PI; }
-    if (_ev_hseed._helix._fz0 < -M_PI) { _ev_hseed._helix._fz0 = _ev_hseed._helix._fz0 + 2 * M_PI; }
+        if (_ev_hseed._helix._fz0 < -M_PI) { _ev_hseed._helix._fz0 = _ev_hseed._helix._fz0 + 2 * M_PI; }
         _ev_hseed._helix._lambda = 1.0/_dphidz;
         _ev_hseed._helix._chi2dZPhi = _lineFitter.chi2Dof();
-          saveHelix(i, _ev_hseed);//_hsColl is not filled, make sure if parametrs are added into _hsColl
+
+        //saveHelix(i, _ev_hseed);//_hsColl is not filled, make sure if parametrs are added into _hsColl
+    //HelixSeed hseed;
+    const TimeCluster* tculster = &_data.tccol->at(i);
+    _ev_hseed._t0 = tculster->_t0;
+    auto const& tccH    = _event->getValidHandle<mu2e::TimeClusterCollection>(_tcCollTag);
+    _ev_hseed._timeCluster = art::Ptr<TimeCluster>(tccH, i);
+    _ev_hseed._hhits.setParent(_data.chcol->parent());
+    ::LsqSums2 fitter;
+    for (size_t m = 0; m < _tcHits.size(); m++) {
+      if(_tcHits[m].used == false) continue;
+      int hitIndice = _tcHits[m].hitIndice;
+      const ComboHit* hit = &_data.chcol->at(hitIndice);
+      fitter.addPoint(hit->pos().z(), hit->correctedTime(), 1 / (hit->timeRes() * hit->timeRes()));
+      ComboHit hhit(*hit);
+      hhit._hphi = _tcHits[m].helixPhi;
+      _ev_hseed._hhits.push_back(hhit);
+    }
+    //float eDepAvg = _ev_hseed._hhits.eDepAvg();
+    _ev_hseed._t0 = TrkT0(fitter.y0(), fitter.y0Err());
+    _ev_hseed._status.merge(TrkFitFlag::helixOK);
+    _ev_hseed._status.merge(TrkFitFlag::APRHelix);
+
           std::cout<<"CROSSCHECK = "<<std::endl;
           size_t nComboHitsInSegment = _tcHits.size();
           int nstrawhits__ = 0;
@@ -9075,7 +9701,7 @@ for (int i = 0; i < _data.nSeeds(); ++i) {
             std::cout<<"_tcHits["<<k<<"].hitIndice = "<<_tcHits[k].hitIndice<<std::endl;
             nstrawhits__ = nstrawhits__ + _tcHits[k].strawhits;
           }
-          std::cout<<"nstrawhits = "<<nstrawhits__<<std::endl;
+          //std::cout<<"nstrawhits = "<<nstrawhits__<<std::endl;
       //-----------------------------------------------
       // Pre-selection on hits of helix candidate
       //-----------------------------------------------
