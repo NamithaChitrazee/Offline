@@ -10,13 +10,13 @@ TrkHitReco :{
    DBSClusterer : {
       DBSminExpand    : 1
       DeltaTime       : 30
-      DeltaZ          : 800
-      DeltaXY         : 200
+      DeltaZ          : 200
+      DeltaXY         : 50
       MinClusterHits  : 1
       TestFlag        : false
       BackgroundMask  : []
       SignalMask      : ["TimeSelection", "EnergySelection", "RadiusSelection"]
-      KerasWeights    : ""
+      KerasWeights    : "Offline/TrkHitReco/data/TrainBkgDiag.dat"
    }
 
    TNTClusterer : {
@@ -162,7 +162,9 @@ TrkHitReco : {
       BackgroundMask       : ["Background"]
       OutputLevel          : "uniquepanel"
       SaveBkgClusters      : true
-      KerasQuality         : 0.5
+      CountProtons         : true
+      MinEdep              : 0.003
+      KerasQuality         : 0.8
       DebugLevel           : 0
    }
 }
