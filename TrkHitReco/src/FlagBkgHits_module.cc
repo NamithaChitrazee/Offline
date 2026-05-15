@@ -16,8 +16,8 @@
 #include "Offline/RecoDataProducts/inc/StrawDigi.hh"
 #include "Offline/TrkHitReco/inc/TrainBkgDiag.hxx"
 
-#include "TMath.h"
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -36,28 +36,26 @@ namespace mu2e
         using Comment = fhicl::Comment;
 
         // module-level parameters
-        fhicl::Atom<art::InputTag>    comboHitCollection{   Name("ComboHitCollection"),     Comment("ComboHit collection name") };
-        fhicl::Atom<float>            clusterPositionError{ Name("ClusterPositionError"),   Comment("Cluster position error") };
-        fhicl::Atom<bool>             filterHits{           Name("FilterHits"),             Comment("Produce filtered ComboHit collection") };
-        fhicl::Sequence<std::string>  backgroundMask{       Name("BackgroundMask"),         Comment("Bkg hit selection mask for output filtering") };
-        fhicl::Atom<bool>             saveBkgClusters{      Name("SaveBkgClusters"),        Comment("Save bkg clusters") };
-        fhicl::Atom<bool>             countProtons{         Name("CountProtons"),           Comment("Count protons") };
-        fhicl::Atom<float>            minEdep{              Name("MinEdep"),                Comment("Min Edep") };
-        fhicl::Atom<std::string>      outputLevel{          Name("OutputLevel"),            Comment("Level of the output ComboHitCollection") };
-        fhicl::Atom<float>            kerasQuality{         Name("KerasQuality"),           Comment("Keras quality cut") };
-        fhicl::Atom<int>              debugLevel{           Name("DebugLevel"),             Comment("Debug"), 0 };
+        fhicl::Atom<art::InputTag>    comboHitCollection{ Name("ComboHitCollection"),    Comment("ComboHit collection name") };
+        fhicl::Atom<bool>             filterHits{         Name("FilterHits"),            Comment("Produce filtered ComboHit collection") };
+        fhicl::Sequence<std::string>  backgroundMask{     Name("BackgroundMask"),        Comment("Bkg hit selection mask for output filtering") };
+        fhicl::Atom<bool>             saveBkgClusters{    Name("SaveBkgClusters"),       Comment("Save bkg clusters") };
+        fhicl::Atom<bool>             countProtons{       Name("CountProtons"),          Comment("Count protons") };
+        fhicl::Atom<float>            minEdep{            Name("MinEdep"),               Comment("Min Edep") };
+        fhicl::Atom<std::string>      outputLevel{        Name("OutputLevel"),           Comment("Level of the output ComboHitCollection") };
+        fhicl::Atom<float>            kerasQuality{       Name("KerasQuality"),          Comment("Keras quality cut") };
 
         // DBScan clustering parameters
-        fhicl::Atom<int>              DBSminExpand{         Name("DBSminExpand"),           Comment("Min number neighbors for DBScan algo") };
-        fhicl::Atom<float>            hitDeltaTime{         Name("DeltaTime"),              Comment("Max time difference between hits") };
-        fhicl::Atom<float>            hitDeltaZ{            Name("DeltaZ"),                 Comment("Max Z difference between hits") };
-        fhicl::Atom<float>            hitDeltaXY{           Name("DeltaXY"),                Comment("Max XY difference between hits") };
-        fhicl::Atom<unsigned>         minClusterHits{       Name("MinClusterHits"),         Comment("Min number hits in cluster") };
-        fhicl::Sequence<std::string>  clusterBkgMask{       Name("ClusterBackgroundMask"),  Comment("Bkg hit mask for clustering") };
-        fhicl::Sequence<std::string>  clusterSigMask{       Name("ClusterSignalMask"),      Comment("Signal hit mask for clustering") };
-        fhicl::Atom<bool>             testflag{             Name("TestFlag"),               Comment("Test hit flags during clustering") };
-        fhicl::Atom<std::string>      kerasWeights{         Name("KerasWeights"),           Comment("Weights for keras model") };
-        fhicl::Atom<int>              diag{                 Name("Diag"),                   Comment("Diagnosis level"), 0 };
+        fhicl::Atom<int>              DBSminExpand{       Name("DBSminExpand"),          Comment("Min number neighbors for DBScan algo") };
+        fhicl::Atom<float>            hitDeltaTime{       Name("DeltaTime"),             Comment("Max time difference between hits") };
+        fhicl::Atom<float>            hitDeltaZ{          Name("DeltaZ"),                Comment("Max Z difference between hits") };
+        fhicl::Atom<float>            hitDeltaXY{         Name("DeltaXY"),               Comment("Max XY difference between hits") };
+        fhicl::Atom<unsigned>         minClusterHits{     Name("MinClusterHits"),        Comment("Min number hits in cluster") };
+        fhicl::Sequence<std::string>  clusterBkgMask{     Name("ClusterBackgroundMask"), Comment("Bkg hit mask for clustering") };
+        fhicl::Sequence<std::string>  clusterSigMask{     Name("ClusterSignalMask"),     Comment("Signal hit mask for clustering") };
+        fhicl::Atom<bool>             testflag{           Name("TestFlag"),              Comment("Test hit flags during clustering") };
+        fhicl::Atom<std::string>      kerasWeights{       Name("KerasWeights"),          Comment("Weights for keras model") };
+        fhicl::Atom<int>              diag{               Name("Diag"),                  Comment("Diagnosis level"), 0 };
       };
 
       explicit FlagBkgHits(const art::EDProducer::Table<Config>& config);
@@ -73,10 +71,7 @@ namespace mu2e
       float                                       minedep_;
       StrawHitFlag                                bkgmsk_;
       StrawIdMask::Level                          level_;
-      float                                       cperr2_;
-      int const                                   debug_;
       float                                       kerasQ_;
-      int                                         iev_;
 
       // DBScan clustering members
       int                                         DBSminExpand_;
@@ -92,8 +87,8 @@ namespace mu2e
       std::shared_ptr<TMVA_SOFIE_TrainBkgDiag::Session> sofiePtr_;
 
       // module-level methods
-      void classifyCluster(BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol, std::vector<int> hitToClusterMap) const;
-      void countProton(BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol) const;
+      void classifyCluster    (BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol, std::vector<int>& hitToClusterMap) const;
+      void countProton        (BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol) const;
 
       // DBScan clustering methods
       void  findClusters      (BkgClusterCollection& clusters, const ComboHitCollection& chcol);
@@ -113,9 +108,7 @@ namespace mu2e
     countprotons_(  config().countProtons()),
     minedep_(       config().minEdep()),
     bkgmsk_(        config().backgroundMask()),
-    debug_(         config().debugLevel()),
     kerasQ_(        config().kerasQuality()),
-    iev_(0),
     DBSminExpand_(  config().DBSminExpand()),
     deltaTime_(     config().hitDeltaTime()),
     deltaZ_(        config().hitDeltaZ()),
@@ -132,8 +125,6 @@ namespace mu2e
       produces<BkgClusterHitCollection>();
       produces<BkgClusterCollection>();
     }
-    float cperr = config().clusterPositionError();
-    cperr2_ = cperr*cperr;
     StrawIdMask mask(config().outputLevel());
     level_ = mask.level();
   }
@@ -207,8 +198,8 @@ namespace mu2e
     if (savebkg_) {
       for (size_t ich = 0; ich < nch; ++ich) {
         int icl = hitToClusterMap[ich];
-        if (icl > -1) bkghitcol.emplace_back(BkgClusterHit(distance(bkgccol[icl], chcol_out->at(ich)), chcol_out->at(ich).flag()));
-        else          bkghitcol.emplace_back(BkgClusterHit(999.0, chcol_out->at(ich).flag()));
+        if (icl > -1) bkghitcol.emplace_back(BkgClusterHit(distance(bkgccol[icl], chcol[ich]), chfcol[ich]));
+        else          bkghitcol.emplace_back(BkgClusterHit(999.0, chfcol[ich]));
       }
     }
     event.put(std::move(chcol_out));
@@ -216,12 +207,11 @@ namespace mu2e
       event.put(std::make_unique<BkgClusterHitCollection>(bkghitcol));
       event.put(std::make_unique<BkgClusterCollection>(bkgccol));
     }
-    ++iev_;
   }
 
 
   //------------------------------------------------------------------------------------------
-  void FlagBkgHits::classifyCluster(BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol, std::vector<int> hitToClusterMap) const
+  void FlagBkgHits::classifyCluster(BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol, std::vector<int>& hitToClusterMap) const
   {
     for (size_t icl = 0; icl < bkgccol.size(); ++icl) {
       auto& cluster = bkgccol[icl];
@@ -363,7 +353,7 @@ namespace mu2e
   {
     float psep_x = hit.pos().x() - cluster.pos().x();
     float psep_y = hit.pos().y() - cluster.pos().y();
-    return sqrt(psep_x*psep_x + psep_y*psep_y);
+    return sqrtf(psep_x*psep_x + psep_y*psep_y);
   }
 
 
@@ -373,38 +363,28 @@ namespace mu2e
     if (cluster.hits().empty()) { cluster.time(0.0f); cluster.pos(XYZVectorF(0.0f,0.0f,0.0f)); return; }
     if (cluster.hits().size() == 1) {
       int idx = cluster.hits().at(0);
+      XYZVectorF hitpos(chcol[idx].pos().x(), chcol[idx].pos().y(), chcol[idx].pos().z());
       cluster.time(chcol[idx].correctedTime());
       cluster.edep(chcol[idx].energyDep());
-      cluster.pos(XYZVectorF(chcol[idx].pos().x(), chcol[idx].pos().y(), chcol[idx].pos().z()));
-      XYZVectorF hitpos(chcol[idx].pos().x(), chcol[idx].pos().y(), chcol[idx].pos().z());
+      cluster.pos(hitpos);
       cluster.addHitPosition(hitpos);
       return;
     }
-    float sumWeight(0), crho(0), ctime(0), cz(0), cedep(0), cphi(0);
+    float sumWeight(0), cx(0), cy(0), ctime(0), cz(0), cedep(0);
     for (auto& idx : cluster.hits()) {
       float weight = chcol[idx].nStrawHits();
-      float dt     = chcol[idx].correctedTime();
-      float dr     = sqrtf(chcol[idx].pos().perp2());
-      float dz     = chcol[idx].pos().z();
-      float edep   = chcol[idx].energyDep();
       XYZVectorF hitpos(chcol[idx].pos().x(), chcol[idx].pos().y(), chcol[idx].pos().z());
       cluster.addHitPosition(hitpos);
-      float dp     = chcol[idx].phi();
-      ctime    += dt*weight;
-      crho     += dr*weight;
-      cphi     += dp*weight;
-      cz       += dz*weight;
-      cedep    += edep*weight;
+      ctime     += chcol[idx].correctedTime() * weight;
+      cx        += chcol[idx].pos().x()       * weight;
+      cy        += chcol[idx].pos().y()       * weight;
+      cz        += chcol[idx].pos().z()       * weight;
+      cedep     += chcol[idx].energyDep()     * weight;
       sumWeight += weight;
     }
-    cphi  /= sumWeight;
-    crho  /= sumWeight;
-    ctime /= sumWeight;
-    cz    /= sumWeight;
-    cedep /= sumWeight;
-    cluster.time(ctime);
-    cluster.pos(XYZVectorF(crho*cos(cphi), crho*sin(cphi), cz));
-    cluster.edep(cedep);
+    cluster.time(ctime / sumWeight);
+    cluster.pos(XYZVectorF(cx/sumWeight, cy/sumWeight, cz/sumWeight));
+    cluster.edep(cedep / sumWeight);
   }
 
 
@@ -417,28 +397,20 @@ namespace mu2e
       hitplanes[ch.strawId().plane()] += ch.nStrawHits();
     }
 
-    unsigned npexp(0), np(0), nhits(0);
     int ipmin(0), ipmax(StrawId::_nplanes-1);
     while (hitplanes[ipmin] == 0 && ipmin < StrawId::_nplanes) ++ipmin;
     while (hitplanes[ipmax] == 0 && ipmax > 0)                --ipmax;
-    int fp(ipmin), lp(ipmin-1), pgap(0);
+    unsigned np(0), nhits(0);
     for (int ip = ipmin; ip <= ipmax; ++ip) {
-      npexp++;
-      if (hitplanes[ip] > 0) {
-        ++np;
-        if (lp > 0 && ip - lp - 1 > pgap) pgap = ip - lp - 1;
-        if (ip > lp) lp = ip;
-        if (ip < fp) fp = ip;
-        lp = ip;
-      }
+      if (hitplanes[ip] > 0) ++np;
       nhits += hitplanes[ip];
     }
     if (nhits < 1 || np < 2) return;
 
-    double sqrSumDeltaTime(0.), sqrSumDeltaX(0.), sqrSumDeltaY(0.), sqrSumDeltaPhi(0.);
-    float zmin = std::numeric_limits<float>::max();
+    float sqrSumDeltaTime(0.f), sqrSumDeltaX(0.f), sqrSumDeltaY(0.f), sqrSumDeltaPhi(0.f);
+    float zmin =  std::numeric_limits<float>::max();
     float zmax = -std::numeric_limits<float>::max();
-    float phimin = std::numeric_limits<float>::max();
+    float phimin =  std::numeric_limits<float>::max();
     float phimax = -std::numeric_limits<float>::max();
     float phiclust = cluster.pos().phi();
     if (phiclust >  M_PI) phiclust -= 2*M_PI;
@@ -455,8 +427,7 @@ namespace mu2e
       sqrSumDeltaX    += dx*dx;
       sqrSumDeltaY    += dy*dy;
       sqrSumDeltaTime += dt*dt;
-      float phihit = hit.phi();
-      float dphi_rel = phihit - phiclust;
+      float dphi_rel = hit.phi() - phiclust;
       if (dphi_rel >  M_PI) dphi_rel -= 2*M_PI;
       if (dphi_rel < -M_PI) dphi_rel += 2*M_PI;
       if (dphi_rel < phimin) phimin = dphi_rel;
@@ -481,11 +452,9 @@ namespace mu2e
   //------------------------------------------------------------------------------------------
   void FlagBkgHits::dump(const std::vector<BkgCluster>& clusters)
   {
-    int iclu(0);
     for (auto& cluster : clusters) {
       for (auto& hit : cluster.hits()) std::cout << hit << " ";
       std::cout << std::endl;
-      ++iclu;
     }
   }
 

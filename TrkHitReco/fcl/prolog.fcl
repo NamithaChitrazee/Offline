@@ -100,7 +100,6 @@ TrkHitReco : {
    FlagBkgHits : {
       module_type            : FlagBkgHits
       ComboHitCollection     : "makePH"
-      ClusterPositionError   : 10
       FilterHits             : false
       BackgroundMask         : ["Background"]
       OutputLevel            : "uniquepanel"
@@ -108,7 +107,6 @@ TrkHitReco : {
       CountProtons           : true
       MinEdep                : 0.003
       KerasQuality           : 0.8
-      DebugLevel             : 0
       DBSminExpand           : 1
       DeltaTime              : 30
       DeltaZ                 : 200
