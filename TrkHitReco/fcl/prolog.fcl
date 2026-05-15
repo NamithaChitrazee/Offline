@@ -3,60 +3,7 @@ BEGIN_PROLOG
 # Normal reco seqence module: this produces a hit for every digi, and uses
 # flags to keep track of which hits to use
 # Reconstruct hits: this produces StrawHits and ComboHits
-TrkHitReco :{
-   # flag hits from low-energy electrons (Compton electrons, delta rays, ...)
-   # First, configure the clusters
-
-   DBSClusterer : {
-      DBSminExpand    : 1
-      DeltaTime       : 30
-      DeltaZ          : 200
-      DeltaXY         : 50
-      MinClusterHits  : 1
-      TestFlag        : false
-      BackgroundMask  : []
-      SignalMask      : ["TimeSelection", "EnergySelection", "RadiusSelection"]
-      KerasWeights    : "Offline/TrkHitReco/data/TrainBkgDiag.dat"
-   }
-
-   TNTClusterer : {
-      HitDistance      : 5
-      SeedDistance     : 20
-      ClusterDiameter  : 5.0
-      ClusterTime      : 20.0
-      MinClusterHits   : 1
-      MaxHitTimeDiff   : 30.0
-      MaxSumDistance   : 100.0
-      MaxCluIterations : 10
-      MaxDistance      : 100.0
-      MinHitError      : 5.0
-      TimeRMS          : 2.0
-      MedianCentroid   : false
-      ComboInit        : true
-      MinActiveHits    : 3
-      MinNPlanes       : 2
-      TestFlag         : true
-      BackgroundMask   : []
-      SignalMask       : ["TimeSelection", "EnergySelection", "RadiusSelection"]
-      KerasWeights     : "Offline/TrkHitReco/data/TrainBkgDiagStationSpatial.dat"
-   }
-
-   Chi2Clusterer : {
-      HitDistance      : 4
-      SeedDistance     : 8
-      MinClusterHits   : 1
-      MaxHitTimeDiff   : 30.0
-      MaxCluIterations : 5
-      MinActiveHits    : 3
-      MinNPlanes       : 2
-      TestFlag         : true
-      BackgroundMask   : []
-      SignalMask       : ["TimeSelection", "EnergySelection", "RadiusSelection"]
-      KerasWeights     : "Offline/TrkHitReco/data/TrainBkgDiagStationSpatial.dat"
-      UseSLine         : false
-      Diag             : 0
-   }
-}
+TrkHitReco :{}
 
 TrkHitReco : {
 
@@ -151,21 +98,26 @@ TrkHitReco : {
 
    # Background hit flagging
    FlagBkgHits : {
-      module_type          : FlagBkgHits
-      ComboHitCollection   : "makePH"
-      ClusterAlgorithm     : 3
-      TNTClustering        : {@table::TrkHitReco.TNTClusterer}
-      Chi2Clustering       : {@table::TrkHitReco.Chi2Clusterer}
-      DBSClustering        : {@table::TrkHitReco.DBSClusterer}
-      ClusterPositionError : 10
-      FilterHits           : false
-      BackgroundMask       : ["Background"]
-      OutputLevel          : "uniquepanel"
-      SaveBkgClusters      : true
-      CountProtons         : true
-      MinEdep              : 0.003
-      KerasQuality         : 0.8
-      DebugLevel           : 0
+      module_type            : FlagBkgHits
+      ComboHitCollection     : "makePH"
+      ClusterPositionError   : 10
+      FilterHits             : false
+      BackgroundMask         : ["Background"]
+      OutputLevel            : "uniquepanel"
+      SaveBkgClusters        : true
+      CountProtons           : true
+      MinEdep                : 0.003
+      KerasQuality           : 0.8
+      DebugLevel             : 0
+      DBSminExpand           : 1
+      DeltaTime              : 30
+      DeltaZ                 : 200
+      DeltaXY                : 50
+      MinClusterHits         : 1
+      TestFlag               : false
+      ClusterBackgroundMask  : []
+      ClusterSignalMask      : ["TimeSelection", "EnergySelection", "RadiusSelection"]
+      KerasWeights           : "Offline/TrkHitReco/data/TrainBkgDiag.dat"
    }
 }
 
