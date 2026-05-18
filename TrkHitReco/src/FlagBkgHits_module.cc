@@ -423,7 +423,7 @@ namespace mu2e
       if (hZ > zmax) zmax = hZ;
       float dx = hit.pos().x() - cluster.pos().x();
       float dy = hit.pos().y() - cluster.pos().y();
-      float dt = hit.time() - cluster.time();
+      float dt = hit.correctedTime() - cluster.time(); //hit.time() - cluster.time();
       sqrSumDeltaX    += dx*dx;
       sqrSumDeltaY    += dy*dy;
       sqrSumDeltaTime += dt*dt;
@@ -446,6 +446,7 @@ namespace mu2e
     std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
     cluster.setKerasQ(kerasout[0]);
     if (diag_ > 0) std::cout << "kerasout = " << kerasout[0] << std::endl;
+    std::cout<<"Keras values = "<<kerasvars[0]<<"  "<<kerasvars[1]<<"  "<<kerasvars[2]<<"  "<<kerasvars[3]<<"  "<<kerasvars[4]<<"  "<<kerasvars[5]<<"  "<<kerasvars[6]<<std::endl;
   }
 
 
