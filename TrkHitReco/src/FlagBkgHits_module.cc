@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,7 @@ namespace mu2e
         fhicl::Sequence<std::string>  clusterSigMask{     Name("ClusterSignalMask"),     Comment("Signal hit mask for clustering") };
         fhicl::Atom<bool>             testflag{           Name("TestFlag"),              Comment("Test hit flags during clustering") };
         fhicl::Atom<std::string>      kerasWeights{       Name("KerasWeights"),          Comment("Weights for keras model") };
+        fhicl::Atom<std::string>      kerasNorm{          Name("KerasNorm"),             Comment("Normalization constants for keras model") };
         fhicl::Atom<int>              diag{               Name("Diag"),                  Comment("Diagnosis level"), 0 };
       };
 
@@ -83,6 +85,9 @@ namespace mu2e
       StrawHitFlag                                clusterSigMask_;
       bool                                        testflag_;
       std::string                                 kerasW_;
+      std::string                                 kerasNorm_;
+      std::array<float,7>                         kerasMean_{};
+      std::array<float,7>                         kerasStd_{};
       int                                         diag_;
       std::shared_ptr<TMVA_SOFIE_TrainBkgDiag::Session> sofiePtr_;
 
@@ -118,6 +123,7 @@ namespace mu2e
     clusterSigMask_(config().clusterSigMask()),
     testflag_(      config().testflag()),
     kerasW_(        config().kerasWeights()),
+    kerasNorm_(     config().kerasNorm()),
     diag_(          config().diag())
   {
     produces<ComboHitCollection>();
@@ -135,6 +141,16 @@ namespace mu2e
     ConfigFileLookupPolicy configFile;
     auto kerasWgtsFile = configFile(kerasW_);
     sofiePtr_ = std::make_shared<TMVA_SOFIE_TrainBkgDiag::Session>(kerasWgtsFile);
+
+    auto kerasNormFile = configFile(kerasNorm_);
+    std::ifstream normf(kerasNormFile);
+    if (!normf.is_open())
+      throw cet::exception("CONFIG") << "FlagBkgHits: failed to open keras normalization file " << kerasNormFile;
+    std::string name;
+    for (size_t i = 0; i < 7; ++i) {
+      if (!(normf >> name >> kerasMean_[i] >> kerasStd_[i]))
+        throw cet::exception("CONFIG") << "FlagBkgHits: keras normalization file truncated at entry " << i;
+    }
   }
 
 
@@ -443,6 +459,8 @@ namespace mu2e
     kerasvars[4] = std::sqrt((sqrSumDeltaX + sqrSumDeltaY) / nchits);
     kerasvars[5] = std::sqrt(sqrSumDeltaTime / nchits);
     kerasvars[6] = std::sqrt(sqrSumDeltaPhi / nchits);
+    for (size_t i = 0; i < 7; ++i)
+      kerasvars[i] = (kerasvars[i] - kerasMean_[i]) / kerasStd_[i];
     std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
     cluster.setKerasQ(kerasout[0]);
     if (diag_ > 0) std::cout << "kerasout = " << kerasout[0] << std::endl;
