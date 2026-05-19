@@ -86,9 +86,6 @@ namespace mu2e
       float                                       deltaTime_;
       float                                       deltaZ_;
       float                                       deltaXY2_;
-      float                                       r2DeltaTime_;
-      float                                       r2DeltaZ_;
-      float                                       r2DeltaXY2_;
       unsigned                                    minClusterHits_;
       StrawHitFlag                                clusterBkgMask_;
       StrawHitFlag                                clusterSigMask_;
@@ -98,6 +95,9 @@ namespace mu2e
       std::array<float,7>                         kerasMean_{};
       std::array<float,7>                         kerasStd_{};
       int                                         diag_;
+      float                                       r2DeltaTime_;
+      float                                       r2DeltaZ_;
+      float                                       r2DeltaXY2_;
       std::shared_ptr<TMVA_SOFIE_TrainBkgDiag::Session> sofiePtr_;
 
       // module-level methods
