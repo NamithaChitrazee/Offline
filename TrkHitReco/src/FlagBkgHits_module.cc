@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <string>
 #include <vector>
 
@@ -169,6 +170,15 @@ namespace mu2e
     StrawHitFlagCollection chfcol(nch);
     std::vector<int> hitToClusterMap(nch, -1);
     classifyCluster(bkgccol, chfcol, chcol, hitToClusterMap);
+
+    unsigned nUnclustered = 0;
+    for (size_t ich = 0; ich < nch; ++ich)
+      if (hitToClusterMap[ich] == -1) ++nUnclustered;
+    float pctUnclustered = nch > 0 ? 100.f * nUnclustered / nch : 0.f;
+    std::cout << "FlagBkgHits: nComboHits=" << nch
+              << "  nUnclustered=" << nUnclustered
+              << "  (" << std::fixed << std::setprecision(1) << pctUnclustered << "% default kerasQ)"
+              << std::endl;
 
     if (countprotons_)
       countProton(bkgccol, chfcol, chcol);
@@ -435,15 +445,6 @@ namespace mu2e
   void FlagBkgHits::calculateCluster(BkgCluster& cluster, const ComboHitCollection& chcol)
   {
     if (cluster.hits().empty()) { cluster.time(0.0f); cluster.pos(XYZVectorF(0.0f,0.0f,0.0f)); return; }
-    if (cluster.hits().size() == 1) {
-      int idx = cluster.hits().at(0);
-      XYZVectorF hitpos(chcol[idx].pos().x(), chcol[idx].pos().y(), chcol[idx].pos().z());
-      cluster.time(chcol[idx].correctedTime());
-      cluster.edep(chcol[idx].energyDep());
-      cluster.pos(hitpos);
-      cluster.addHitPosition(hitpos);
-      return;
-    }
     float sumWeight(0), cx(0), cy(0), ctime(0), cz(0), cedep(0);
     for (auto& idx : cluster.hits()) {
       float weight = chcol[idx].nStrawHits();
