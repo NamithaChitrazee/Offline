@@ -97,7 +97,6 @@ namespace mu2e
 
       // DBScan clustering methods
       void  findClusters      (BkgClusterCollection& clusters, const ComboHitCollection& chcol);
-      void  classifyBkgCluster(BkgCluster& cluster,           const ComboHitCollection& chcol) const;
       float distance          (const BkgCluster& cluster,     const ComboHit& hit) const;
       int   findNeighbors     (unsigned ihit, const std::vector<unsigned>& idx, const ComboHitCollection& chcol, std::vector<unsigned>& neighbors);
       void  calculateCluster  (BkgCluster& cluster,           const ComboHitCollection& chcol);
@@ -231,7 +230,66 @@ namespace mu2e
   {
     for (size_t icl = 0; icl < bkgccol.size(); ++icl) {
       auto& cluster = bkgccol[icl];
-      classifyBkgCluster(cluster, chcol);
+
+      // compute per-plane hit counts
+      std::array<int,StrawId::_nplanes> hitplanes{0};
+      for (const auto& chit : cluster.hits()) {
+        const ComboHit& ch = chcol[chit];
+        hitplanes[ch.strawId().plane()] += ch.nStrawHits();
+      }
+      int ipmin(0), ipmax(StrawId::_nplanes-1);
+      while (hitplanes[ipmin] == 0 && ipmin < StrawId::_nplanes) ++ipmin;
+      while (hitplanes[ipmax] == 0 && ipmax > 0)                --ipmax;
+      unsigned np(0), nhits(0);
+      for (int ip = ipmin; ip <= ipmax; ++ip) {
+        if (hitplanes[ip] > 0) ++np;
+        nhits += hitplanes[ip];
+      }
+
+      // run Keras inference only when the cluster spans enough planes and hits
+      if (nhits >= 1 && np >= 2) {
+        float sqrSumDeltaTime(0.f), sqrSumDeltaX(0.f), sqrSumDeltaY(0.f), sqrSumDeltaPhi(0.f);
+        float zmin =  std::numeric_limits<float>::max();
+        float zmax = -std::numeric_limits<float>::max();
+        float phimin =  std::numeric_limits<float>::max();
+        float phimax = -std::numeric_limits<float>::max();
+        float phiclust = cluster.pos().phi();
+        if (phiclust >  M_PI) phiclust -= 2*M_PI;
+        if (phiclust < -M_PI) phiclust += 2*M_PI;
+        unsigned nchits = cluster.hits().size();
+        for (const auto& chit : cluster.hits()) {
+          const auto& hit = chcol[chit];
+          float hZ = hit.pos().Z();
+          if (hZ < zmin) zmin = hZ;
+          if (hZ > zmax) zmax = hZ;
+          float dx = hit.pos().x() - cluster.pos().x();
+          float dy = hit.pos().y() - cluster.pos().y();
+          float dt = hit.correctedTime() - cluster.time();
+          sqrSumDeltaX    += dx*dx;
+          sqrSumDeltaY    += dy*dy;
+          sqrSumDeltaTime += dt*dt;
+          float dphi_rel = hit.phi() - phiclust;
+          if (dphi_rel >  M_PI) dphi_rel -= 2*M_PI;
+          if (dphi_rel < -M_PI) dphi_rel += 2*M_PI;
+          if (dphi_rel < phimin) phimin = dphi_rel;
+          if (dphi_rel > phimax) phimax = dphi_rel;
+          sqrSumDeltaPhi += dphi_rel*dphi_rel;
+        }
+        std::array<float,7> kerasvars;
+        kerasvars[0] = cluster.pos().Rho();
+        kerasvars[1] = zmax - zmin;
+        kerasvars[2] = phimax - phimin;
+        kerasvars[3] = nhits;
+        kerasvars[4] = std::sqrt((sqrSumDeltaX + sqrSumDeltaY) / nchits);
+        kerasvars[5] = std::sqrt(sqrSumDeltaTime / nchits);
+        kerasvars[6] = std::sqrt(sqrSumDeltaPhi / nchits);
+        for (size_t i = 0; i < 7; ++i)
+          kerasvars[i] = (kerasvars[i] - kerasMean_[i]) / kerasStd_[i];
+        std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
+        cluster.setKerasQ(kerasout[0]);
+        if (diag_ > 0) std::cout << "kerasout = " << kerasout[0] << std::endl;
+      }
+
       StrawHitFlag flag(StrawHitFlag::bkgclust);
       if (cluster.getKerasQ() > kerasQ_) {
         flag.merge(StrawHitFlag(StrawHitFlag::bkg));
@@ -401,70 +459,6 @@ namespace mu2e
     cluster.time(ctime / sumWeight);
     cluster.pos(XYZVectorF(cx/sumWeight, cy/sumWeight, cz/sumWeight));
     cluster.edep(cedep / sumWeight);
-  }
-
-
-  //------------------------------------------------------------------------------------------
-  void FlagBkgHits::classifyBkgCluster(BkgCluster& cluster, const ComboHitCollection& chcol) const
-  {
-    std::array<int,StrawId::_nplanes> hitplanes{0};
-    for (const auto& chit : cluster.hits()) {
-      const ComboHit& ch = chcol[chit];
-      hitplanes[ch.strawId().plane()] += ch.nStrawHits();
-    }
-
-    int ipmin(0), ipmax(StrawId::_nplanes-1);
-    while (hitplanes[ipmin] == 0 && ipmin < StrawId::_nplanes) ++ipmin;
-    while (hitplanes[ipmax] == 0 && ipmax > 0)                --ipmax;
-    unsigned np(0), nhits(0);
-    for (int ip = ipmin; ip <= ipmax; ++ip) {
-      if (hitplanes[ip] > 0) ++np;
-      nhits += hitplanes[ip];
-    }
-    if (nhits < 1 || np < 2) return;
-
-    float sqrSumDeltaTime(0.f), sqrSumDeltaX(0.f), sqrSumDeltaY(0.f), sqrSumDeltaPhi(0.f);
-    float zmin =  std::numeric_limits<float>::max();
-    float zmax = -std::numeric_limits<float>::max();
-    float phimin =  std::numeric_limits<float>::max();
-    float phimax = -std::numeric_limits<float>::max();
-    float phiclust = cluster.pos().phi();
-    if (phiclust >  M_PI) phiclust -= 2*M_PI;
-    if (phiclust < -M_PI) phiclust += 2*M_PI;
-    unsigned nchits = cluster.hits().size();
-    for (const auto& chit : cluster.hits()) {
-      const auto& hit = chcol[chit];
-      float hZ = hit.pos().Z();
-      if (hZ < zmin) zmin = hZ;
-      if (hZ > zmax) zmax = hZ;
-      float dx = hit.pos().x() - cluster.pos().x();
-      float dy = hit.pos().y() - cluster.pos().y();
-      float dt = hit.correctedTime() - cluster.time(); //hit.time() - cluster.time();
-      sqrSumDeltaX    += dx*dx;
-      sqrSumDeltaY    += dy*dy;
-      sqrSumDeltaTime += dt*dt;
-      float dphi_rel = hit.phi() - phiclust;
-      if (dphi_rel >  M_PI) dphi_rel -= 2*M_PI;
-      if (dphi_rel < -M_PI) dphi_rel += 2*M_PI;
-      if (dphi_rel < phimin) phimin = dphi_rel;
-      if (dphi_rel > phimax) phimax = dphi_rel;
-      sqrSumDeltaPhi += dphi_rel*dphi_rel;
-    }
-
-    std::array<float,7> kerasvars;
-    kerasvars[0] = cluster.pos().Rho();
-    kerasvars[1] = zmax - zmin;
-    kerasvars[2] = phimax - phimin;
-    kerasvars[3] = nhits;
-    kerasvars[4] = std::sqrt((sqrSumDeltaX + sqrSumDeltaY) / nchits);
-    kerasvars[5] = std::sqrt(sqrSumDeltaTime / nchits);
-    kerasvars[6] = std::sqrt(sqrSumDeltaPhi / nchits);
-    for (size_t i = 0; i < 7; ++i)
-      kerasvars[i] = (kerasvars[i] - kerasMean_[i]) / kerasStd_[i];
-    std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
-    cluster.setKerasQ(kerasout[0]);
-    if (diag_ > 0) std::cout << "kerasout = " << kerasout[0] << std::endl;
-    std::cout<<"Keras values = "<<kerasvars[0]<<"  "<<kerasvars[1]<<"  "<<kerasvars[2]<<"  "<<kerasvars[3]<<"  "<<kerasvars[4]<<"  "<<kerasvars[5]<<"  "<<kerasvars[6]<<std::endl;
   }
 
 
