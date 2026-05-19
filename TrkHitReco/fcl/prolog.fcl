@@ -117,6 +117,9 @@ TrkHitReco : {
       ClusterSignalMask      : ["TimeSelection", "EnergySelection", "RadiusSelection"]
       KerasWeights           : "Offline/TrkHitReco/data/TrainBkgDiag.dat"
       KerasNorm              : "Offline/TrkHitReco/data/TrainBkgNorm.dat"
+      DeltaTimeR2            : 40
+      DeltaZR2               : 300
+      DeltaXYR2              : 75
    }
 }
 

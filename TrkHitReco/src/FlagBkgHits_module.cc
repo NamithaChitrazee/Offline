@@ -59,6 +59,11 @@ namespace mu2e
         fhicl::Atom<std::string>      kerasWeights{       Name("KerasWeights"),          Comment("Weights for keras model") };
         fhicl::Atom<std::string>      kerasNorm{          Name("KerasNorm"),             Comment("Normalization constants for keras model") };
         fhicl::Atom<int>              diag{               Name("Diag"),                  Comment("Diagnosis level"), 0 };
+
+        // second-round DBScan parameters (applied to unclustered hits from round 1)
+        fhicl::Atom<float>            hitDeltaTimeR2{     Name("DeltaTimeR2"),           Comment("Round-2 max time difference between hits"),  40.0 };
+        fhicl::Atom<float>            hitDeltaZR2{        Name("DeltaZR2"),              Comment("Round-2 max Z difference between hits"),     300.0 };
+        fhicl::Atom<float>            hitDeltaXYR2{       Name("DeltaXYR2"),             Comment("Round-2 max XY difference between hits"),     75.0 };
       };
 
       explicit FlagBkgHits(const art::EDProducer::Table<Config>& config);
@@ -81,6 +86,9 @@ namespace mu2e
       float                                       deltaTime_;
       float                                       deltaZ_;
       float                                       deltaXY2_;
+      float                                       r2DeltaTime_;
+      float                                       r2DeltaZ_;
+      float                                       r2DeltaXY2_;
       unsigned                                    minClusterHits_;
       StrawHitFlag                                clusterBkgMask_;
       StrawHitFlag                                clusterSigMask_;
@@ -93,13 +101,13 @@ namespace mu2e
       std::shared_ptr<TMVA_SOFIE_TrainBkgDiag::Session> sofiePtr_;
 
       // module-level methods
-      void classifyCluster    (BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol, std::vector<int>& hitToClusterMap) const;
+      void classifyCluster    (BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol, std::vector<int>& hitToClusterMap, size_t iclStart = 0) const;
       void countProton        (BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol) const;
 
       // DBScan clustering methods
-      void  findClusters      (BkgClusterCollection& clusters, const ComboHitCollection& chcol);
+      void  findClusters      (BkgClusterCollection& clusters, const ComboHitCollection& chcol, std::vector<unsigned>& idx, float deltaTime, float deltaZ, float deltaXY2);
       float distance          (const BkgCluster& cluster,     const ComboHit& hit) const;
-      int   findNeighbors     (unsigned ihit, const std::vector<unsigned>& idx, const ComboHitCollection& chcol, std::vector<unsigned>& neighbors);
+      int   findNeighbors     (unsigned ihit, const std::vector<unsigned>& idx, const ComboHitCollection& chcol, std::vector<unsigned>& neighbors, float deltaTime, float deltaZ, float deltaXY2);
       void  calculateCluster  (BkgCluster& cluster,           const ComboHitCollection& chcol);
       void  dump              (const std::vector<BkgCluster>& clusters);
   };
@@ -124,7 +132,10 @@ namespace mu2e
     testflag_(      config().testflag()),
     kerasW_(        config().kerasWeights()),
     kerasNorm_(     config().kerasNorm()),
-    diag_(          config().diag())
+    diag_(          config().diag()),
+    r2DeltaTime_(   config().hitDeltaTimeR2()),
+    r2DeltaZ_(      config().hitDeltaZR2()),
+    r2DeltaXY2_(    config().hitDeltaXYR2() * config().hitDeltaXYR2())
   {
     produces<ComboHitCollection>();
     if (savebkg_) {
@@ -165,7 +176,14 @@ namespace mu2e
     bkgccol.reserve(nch/2);
     if (savebkg_) bkghitcol.reserve(nch);
 
-    findClusters(bkgccol, chcol);
+    // round 1: cluster flag-filtered hits with tight parameters
+    std::vector<unsigned> r1Idx;
+    r1Idx.reserve(nch);
+    for (size_t ich = 0; ich < nch; ++ich) {
+      if (testflag_ && (!chcol[ich].flag().hasAllProperties(clusterSigMask_) || chcol[ich].flag().hasAnyProperty(clusterBkgMask_))) continue;
+      r1Idx.emplace_back(ich);
+    }
+    findClusters(bkgccol, chcol, r1Idx, deltaTime_, deltaZ_, deltaXY2_);
 
     StrawHitFlagCollection chfcol(nch);
     std::vector<int> hitToClusterMap(nch, -1);
@@ -176,8 +194,28 @@ namespace mu2e
       if (hitToClusterMap[ich] == -1) ++nUnclustered;
     float pctUnclustered = nch > 0 ? 100.f * nUnclustered / nch : 0.f;
     std::cout << "FlagBkgHits: nComboHits=" << nch
-              << "  nUnclustered=" << nUnclustered
+              << "  nUnclusteredR1=" << nUnclustered
               << "  (" << std::fixed << std::setprecision(1) << pctUnclustered << "% default kerasQ)"
+              << std::endl;
+
+    // round 2: re-cluster remaining unclustered hits with looser parameters
+    std::vector<unsigned> r2Idx;
+    r2Idx.reserve(nUnclustered);
+    for (size_t ich = 0; ich < nch; ++ich) {
+      if (hitToClusterMap[ich] != -1) continue;
+      if (testflag_ && (!chcol[ich].flag().hasAllProperties(clusterSigMask_) || chcol[ich].flag().hasAnyProperty(clusterBkgMask_))) continue;
+      r2Idx.emplace_back(ich);
+    }
+    size_t r2ClusterStart = bkgccol.size();
+    findClusters(bkgccol, chcol, r2Idx, r2DeltaTime_, r2DeltaZ_, r2DeltaXY2_);
+    classifyCluster(bkgccol, chfcol, chcol, hitToClusterMap, r2ClusterStart);
+
+    unsigned nUnclusteredR2 = 0;
+    for (size_t ich = 0; ich < nch; ++ich)
+      if (hitToClusterMap[ich] == -1) ++nUnclusteredR2;
+    float pctUnclusteredR2 = nch > 0 ? 100.f * nUnclusteredR2 / nch : 0.f;
+    std::cout << "FlagBkgHits: nUnclusteredR2=" << nUnclusteredR2
+              << "  (" << std::fixed << std::setprecision(1) << pctUnclusteredR2 << "% default kerasQ)"
               << std::endl;
 
     if (countprotons_)
@@ -236,9 +274,9 @@ namespace mu2e
 
 
   //------------------------------------------------------------------------------------------
-  void FlagBkgHits::classifyCluster(BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol, std::vector<int>& hitToClusterMap) const
+  void FlagBkgHits::classifyCluster(BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol, std::vector<int>& hitToClusterMap, size_t iclStart) const
   {
-    for (size_t icl = 0; icl < bkgccol.size(); ++icl) {
+    for (size_t icl = iclStart; icl < bkgccol.size(); ++icl) {
       auto& cluster = bkgccol[icl];
 
       // compute per-plane hit counts
@@ -330,16 +368,11 @@ namespace mu2e
 
 
   //------------------------------------------------------------------------------------------
-  void FlagBkgHits::findClusters(BkgClusterCollection& clusters, const ComboHitCollection& chcol)
+  void FlagBkgHits::findClusters(BkgClusterCollection& clusters, const ComboHitCollection& chcol,
+                                  std::vector<unsigned>& idx, float deltaTime, float deltaZ, float deltaXY2)
   {
-    if (chcol.empty()) return;
+    if (idx.empty()) return;
 
-    std::vector<unsigned> idx;
-    idx.reserve(chcol.size());
-    for (size_t ich = 0; ich < chcol.size(); ++ich) {
-      if (testflag_ && (!chcol[ich].flag().hasAllProperties(clusterSigMask_) || chcol[ich].flag().hasAnyProperty(clusterBkgMask_))) continue;
-      idx.emplace_back(ich);
-    }
     std::sort(idx.begin(), idx.end(), [&chcol](auto i, auto j){
       return chcol[i].correctedTime() < chcol[j].correctedTime();
     });
@@ -352,12 +385,13 @@ namespace mu2e
     std::vector<unsigned> hitToCluster(idx.size(), unprocessedID);
     std::vector<unsigned> neighbors;
     neighbors.reserve(256);
-    clusters.reserve(std::max(16UL, idx.size()/10));
+    size_t prevSize = clusters.size();
+    clusters.reserve(prevSize + std::max(16UL, idx.size()/10));
 
     for (size_t i = 0; i < idx.size(); ++i) {
       if (hitToCluster[i] != unprocessedID) continue;
 
-      int nNeighbors = findNeighbors(i, idx, chcol, neighbors);
+      int nNeighbors = findNeighbors(i, idx, chcol, neighbors, deltaTime, deltaZ, deltaXY2);
       if (nNeighbors < DBSminExpand_) {
         hitToCluster[i] = noiseID;
         continue;
@@ -382,7 +416,7 @@ namespace mu2e
         hitToCluster[j] = currentClusterID;
         thisCluster.addHit(idx[j]);
 
-        nNeighbors = findNeighbors(j, idx, chcol, neighbors);
+        nNeighbors = findNeighbors(j, idx, chcol, neighbors, deltaTime, deltaZ, deltaXY2);
         if (nNeighbors >= DBSminExpand_) {
           for (const auto& k : neighbors) {
             if (hitToCluster[k] == unprocessedID || hitToCluster[k] == noiseID)
@@ -395,13 +429,14 @@ namespace mu2e
         ++currentClusterID;
       }
     }
-    for (auto& cluster : clusters) calculateCluster(cluster, chcol);
+    for (size_t icl = prevSize; icl < clusters.size(); ++icl) calculateCluster(clusters[icl], chcol);
     if (diag_ > 1) dump(clusters);
   }
 
 
   //------------------------------------------------------------------------------------------
-  int FlagBkgHits::findNeighbors(unsigned ihit, const std::vector<unsigned>& idx, const ComboHitCollection& chcol, std::vector<unsigned>& neighbors)
+  int FlagBkgHits::findNeighbors(unsigned ihit, const std::vector<unsigned>& idx, const ComboHitCollection& chcol, std::vector<unsigned>& neighbors,
+                                  float deltaTime, float deltaZ, float deltaXY2)
   {
     neighbors.clear();
     const auto& hit0 = chcol[idx[ihit]];
@@ -410,7 +445,7 @@ namespace mu2e
     float y0    = hit0.pos().y();
     float z0    = hit0.pos().z();
     unsigned nNeighbors = hit0.nStrawHits()-1;
-    float minTime = time0 - deltaTime_;
+    float minTime = time0 - deltaTime;
     auto it_start = std::lower_bound(idx.begin(), idx.end(), minTime, [&chcol](unsigned i, float val){
       return chcol[i].correctedTime() < val;
     });
@@ -419,11 +454,11 @@ namespace mu2e
       if (j == ihit) continue;
       const auto& hitj = chcol[idx[j]];
       float dt = hitj.correctedTime() - time0;
-      if (dt > deltaTime_) break;
-      if (std::abs(hitj.pos().z() - z0) > deltaZ_) continue;
+      if (dt > deltaTime) break;
+      if (std::abs(hitj.pos().z() - z0) > deltaZ) continue;
       float dx = hitj.pos().x() - x0;
       float dy = hitj.pos().y() - y0;
-      if ((dx*dx + dy*dy) <= deltaXY2_) {
+      if ((dx*dx + dy*dy) <= deltaXY2) {
         neighbors.emplace_back(j);
         nNeighbors += hitj.nStrawHits();
       }
