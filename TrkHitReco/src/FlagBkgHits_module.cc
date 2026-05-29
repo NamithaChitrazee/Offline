@@ -374,7 +374,7 @@ namespace mu2e
     if (idx.empty()) return;
 
     std::sort(idx.begin(), idx.end(), [&chcol](auto i, auto j){
-      return chcol[i].correctedTime() < chcol[j].correctedTime();
+      return chcol[i].pos().z() > chcol[j].pos().z();
     });
 
     const unsigned        noiseID(chcol.size()+1u);
@@ -445,17 +445,18 @@ namespace mu2e
     float y0    = hit0.pos().y();
     float z0    = hit0.pos().z();
     unsigned nNeighbors = hit0.nStrawHits()-1;
-    float minTime = time0 - deltaTime;
-    auto it_start = std::lower_bound(idx.begin(), idx.end(), minTime, [&chcol](unsigned i, float val){
-      return chcol[i].correctedTime() < val;
+    // idx is sorted z-descending; binary search for first hit with z <= z0+deltaZ
+    float maxZ = z0 + deltaZ;
+    auto it_start = std::lower_bound(idx.begin(), idx.end(), maxZ, [&chcol](unsigned i, float val){
+      return chcol[i].pos().z() > val;
     });
     size_t istart = std::distance(idx.begin(), it_start);
     for (size_t j = istart; j < idx.size(); ++j) {
       if (j == ihit) continue;
       const auto& hitj = chcol[idx[j]];
+      if ((z0 - hitj.pos().z()) > deltaZ) break;
       float dt = hitj.correctedTime() - time0;
-      if (dt > deltaTime) break;
-      if (std::abs(hitj.pos().z() - z0) > deltaZ) continue;
+      if (std::abs(dt) > deltaTime) continue;
       float dx = hitj.pos().x() - x0;
       float dy = hitj.pos().y() - y0;
       if ((dx*dx + dy*dy) <= deltaXY2) {
