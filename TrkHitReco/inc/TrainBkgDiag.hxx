@@ -1,4 +1,4 @@
-//Code generated automatically by TMVA for Inference of Model file [TrainBkgDiag.h5] at [Fri May 22 21:32:13 2026] 
+//Code generated automatically by TMVA for Inference of Model file [TrainBkgDiag.h5] at [Fri May 29 20:35:42 2026] 
 
 #ifndef ROOT_TMVA_SOFIE_TRAINBKGDIAG
 #define ROOT_TMVA_SOFIE_TRAINBKGDIAG
