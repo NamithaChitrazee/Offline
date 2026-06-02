@@ -199,7 +199,7 @@ namespace mu2e
               << std::endl;
 
     // round 2: re-cluster remaining unclustered hits with looser parameters
-    std::vector<unsigned> r2Idx;
+    /*std::vector<unsigned> r2Idx;
     r2Idx.reserve(nUnclustered);
     for (size_t ich = 0; ich < nch; ++ich) {
       if (hitToClusterMap[ich] != -1) continue;
@@ -216,7 +216,7 @@ namespace mu2e
     float pctUnclusteredR2 = nch > 0 ? 100.f * nUnclusteredR2 / nch : 0.f;
     std::cout << "FlagBkgHits: nUnclusteredR2=" << nUnclusteredR2
               << "  (" << std::fixed << std::setprecision(1) << pctUnclusteredR2 << "% default kerasQ)"
-              << std::endl;
+              << std::endl;*/
 
     if (countprotons_)
       countProton(bkgccol, chfcol, chcol);
@@ -295,7 +295,9 @@ namespace mu2e
       }
 
       // run Keras inference only when the cluster spans enough planes and hits
-      if (nhits >= 1 && np >= 2) {
+      if(diag_ > 0) std::cout<<"nchits = "<<cluster.hits().size()<<" pos = "<<cluster.pos().x()<<"  "<<cluster.pos().y()<<"  "<<cluster.pos().z()<<" kerasQ = "<<cluster.getKerasQ()<<std::endl;
+
+      if (nhits >= 5 && np >= 2) {
         float sqrSumDeltaTime(0.f), sqrSumDeltaX(0.f), sqrSumDeltaY(0.f), sqrSumDeltaPhi(0.f);
         float zmin =  std::numeric_limits<float>::max();
         float zmax = -std::numeric_limits<float>::max();
@@ -331,6 +333,7 @@ namespace mu2e
         kerasvars[4] = std::sqrt((sqrSumDeltaX + sqrSumDeltaY) / nchits);
         kerasvars[5] = std::sqrt(sqrSumDeltaTime / nchits);
         kerasvars[6] = std::sqrt(sqrSumDeltaPhi / nchits);
+        if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<std::endl;
         for (size_t i = 0; i < 7; ++i)
           kerasvars[i] = (kerasvars[i] - kerasMean_[i]) / kerasStd_[i];
         std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
