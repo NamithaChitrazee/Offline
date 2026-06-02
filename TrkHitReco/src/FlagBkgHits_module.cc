@@ -307,6 +307,7 @@ namespace mu2e
         if (phiclust >  M_PI) phiclust -= 2*M_PI;
         if (phiclust < -M_PI) phiclust += 2*M_PI;
         unsigned nchits = cluster.hits().size();
+        float sumUdirX(0.f), sumUdirY(0.f), sumEdep(0.f), sumWireRes(0.f);
         for (const auto& chit : cluster.hits()) {
           const auto& hit = chcol[chit];
           float hZ = hit.pos().Z();
@@ -324,7 +325,15 @@ namespace mu2e
           if (dphi_rel < phimin) phimin = dphi_rel;
           if (dphi_rel > phimax) phimax = dphi_rel;
           sqrSumDeltaPhi += dphi_rel*dphi_rel;
+          sumUdirX   += hit.uDir().X();
+          sumUdirY   += hit.uDir().Y();
+          sumEdep    += hit.energyDep();
+          sumWireRes += hit.wireRes();
         }
+        float avgUdirX   = sumUdirX   / nchits;
+        float avgUdirY   = sumUdirY   / nchits;
+        float avgEdep    = sumEdep    / nchits;
+        float avgWireRes = sumWireRes / nchits;
         float clusterDensity(0.f);
         float area = (zmax - zmin) * std::max(phimax - phimin, 1e-6f);
         if (area > 0.f)
@@ -356,6 +365,7 @@ namespace mu2e
         kerasvars[5] = std::sqrt(sqrSumDeltaTime / nchits);
         kerasvars[6] = std::sqrt(sqrSumDeltaPhi / nchits);
         if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<" clusterDensity = "<<clusterDensity<<" zgap = "<<zgap<<std::endl;
+        if (diag_ > 0) std::cout<<"avgUdirX = "<<avgUdirX<<"  avgUdirY = "<<avgUdirY<<"  avgEdep = "<<avgEdep<<"  avgWireRes = "<<avgWireRes<<"  nStrawHits = "<<nhits<<std::endl;
         for (size_t i = 0; i < 7; ++i)
           kerasvars[i] = (kerasvars[i] - kerasMean_[i]) / kerasStd_[i];
         std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
