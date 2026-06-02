@@ -325,6 +325,28 @@ namespace mu2e
           if (dphi_rel > phimax) phimax = dphi_rel;
           sqrSumDeltaPhi += dphi_rel*dphi_rel;
         }
+        float clusterDensity(0.f);
+        float area = (zmax - zmin) * std::max(phimax - phimin, 1e-6f);
+        if (area > 0.f)
+          clusterDensity = nhits / area;
+
+        float zgap(0.f);
+        {
+          std::vector<float> zpos;
+          zpos.reserve(cluster.hits().size());
+          for (const auto& chit : cluster.hits())
+            zpos.push_back(chcol[chit].pos().Z());
+          std::sort(zpos.begin(), zpos.end(), [](float a, float b){ return a > b; });
+          if (zpos.size() > 1) {
+            std::vector<float> gaps;
+            gaps.reserve(zpos.size() - 1);
+            for (size_t i = 0; i + 1 < zpos.size(); ++i)
+              gaps.push_back(zpos[i] - zpos[i+1]);
+            std::nth_element(gaps.begin(), gaps.begin() + gaps.size()/2, gaps.end());
+            zgap = gaps[gaps.size()/2];
+          }
+        }
+
         std::array<float,7> kerasvars;
         kerasvars[0] = cluster.pos().Rho();
         kerasvars[1] = zmax - zmin;
@@ -333,7 +355,7 @@ namespace mu2e
         kerasvars[4] = std::sqrt((sqrSumDeltaX + sqrSumDeltaY) / nchits);
         kerasvars[5] = std::sqrt(sqrSumDeltaTime / nchits);
         kerasvars[6] = std::sqrt(sqrSumDeltaPhi / nchits);
-        if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<std::endl;
+        if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<" clusterDensity = "<<clusterDensity<<" zgap = "<<zgap<<std::endl;
         for (size_t i = 0; i < 7; ++i)
           kerasvars[i] = (kerasvars[i] - kerasMean_[i]) / kerasStd_[i];
         std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
