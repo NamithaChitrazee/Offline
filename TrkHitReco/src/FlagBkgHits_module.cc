@@ -92,8 +92,8 @@ namespace mu2e
       bool                                        testflag_;
       std::string                                 kerasW_;
       std::string                                 kerasNorm_;
-      std::array<float,7>                         kerasMean_{};
-      std::array<float,7>                         kerasStd_{};
+      std::array<float,9>                         kerasMean_{};
+      std::array<float,9>                         kerasStd_{};
       int                                         diag_;
       float                                       r2DeltaTime_;
       float                                       r2DeltaZ_;
@@ -158,7 +158,7 @@ namespace mu2e
     if (!normf.is_open())
       throw cet::exception("CONFIG") << "FlagBkgHits: failed to open keras normalization file " << kerasNormFile;
     std::string name;
-    for (size_t i = 0; i < 7; ++i) {
+    for (size_t i = 0; i < 9; ++i) {
       if (!(normf >> name >> kerasMean_[i] >> kerasStd_[i]))
         throw cet::exception("CONFIG") << "FlagBkgHits: keras normalization file truncated at entry " << i;
     }
@@ -298,7 +298,7 @@ namespace mu2e
       if(diag_ > 0) std::cout<<"nchits = "<<cluster.hits().size()<<" pos = "<<cluster.pos().x()<<"  "<<cluster.pos().y()<<"  "<<cluster.pos().z()<<" kerasQ = "<<cluster.getKerasQ()<<std::endl;
 
       if (nhits >= 5 && np >= 2) {
-        float sqrSumDeltaTime(0.f), sqrSumDeltaX(0.f), sqrSumDeltaY(0.f), sqrSumDeltaPhi(0.f);
+        float sqrSumDeltaTime(0.f), sqrSumDeltaX(0.f), sqrSumDeltaY(0.f), sqrSumDeltaPhi(0.f), sqrSumDeltaZ(0.f);
         float zmin =  std::numeric_limits<float>::max();
         float zmax = -std::numeric_limits<float>::max();
         float phimin =  std::numeric_limits<float>::max();
@@ -315,9 +315,11 @@ namespace mu2e
           if (hZ > zmax) zmax = hZ;
           float dx = hit.pos().x() - cluster.pos().x();
           float dy = hit.pos().y() - cluster.pos().y();
+          float dz = hit.pos().Z() - cluster.pos().z();
           float dt = hit.correctedTime() - cluster.time();
           sqrSumDeltaX    += dx*dx;
           sqrSumDeltaY    += dy*dy;
+          sqrSumDeltaZ    += dz*dz;
           sqrSumDeltaTime += dt*dt;
           float dphi_rel = hit.phi() - phiclust;
           if (dphi_rel >  M_PI) dphi_rel -= 2*M_PI;
@@ -356,7 +358,7 @@ namespace mu2e
           }
         }
 
-        std::array<float,7> kerasvars;
+        std::array<float,9> kerasvars;
         kerasvars[0] = cluster.pos().Rho();
         kerasvars[1] = zmax - zmin;
         kerasvars[2] = phimax - phimin;
@@ -364,9 +366,11 @@ namespace mu2e
         kerasvars[4] = std::sqrt((sqrSumDeltaX + sqrSumDeltaY) / nchits);
         kerasvars[5] = std::sqrt(sqrSumDeltaTime / nchits);
         kerasvars[6] = std::sqrt(sqrSumDeltaPhi / nchits);
-        if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<" clusterDensity = "<<clusterDensity<<" zgap = "<<zgap<<std::endl;
-        if (diag_ > 0) std::cout<<"avgUdirX = "<<avgUdirX<<"  avgUdirY = "<<avgUdirY<<"  avgEdep = "<<avgEdep<<"  avgWireRes = "<<avgWireRes<<"  nStrawHits = "<<nhits<<std::endl;
-        for (size_t i = 0; i < 7; ++i)
+        kerasvars[7] = std::sqrt(sqrSumDeltaZ / nchits);
+        kerasvars[8] = avgEdep;
+        if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<" "<<kerasvars[7]<<" "<<kerasvars[8]<<" clusterDensity = "<<clusterDensity<<" zgap = "<<zgap<<std::endl;
+        if (diag_ > 0) std::cout<<"avgUdirX = "<<avgUdirX<<"  avgUdirY = "<<avgUdirY<<"  avgWireRes = "<<avgWireRes<<"  nStrawHits = "<<nhits<<std::endl;
+        for (size_t i = 0; i < 9; ++i)
           kerasvars[i] = (kerasvars[i] - kerasMean_[i]) / kerasStd_[i];
         std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
         cluster.setKerasQ(kerasout[0]);
