@@ -92,8 +92,8 @@ namespace mu2e
       bool                                        testflag_;
       std::string                                 kerasW_;
       std::string                                 kerasNorm_;
-      std::array<float,9>                         kerasMean_{};
-      std::array<float,9>                         kerasStd_{};
+      std::array<float,10>                        kerasMean_{};
+      std::array<float,10>                        kerasStd_{};
       int                                         diag_;
       float                                       r2DeltaTime_;
       float                                       r2DeltaZ_;
@@ -158,7 +158,7 @@ namespace mu2e
     if (!normf.is_open())
       throw cet::exception("CONFIG") << "FlagBkgHits: failed to open keras normalization file " << kerasNormFile;
     std::string name;
-    for (size_t i = 0; i < 9; ++i) {
+    for (size_t i = 0; i < 10; ++i) {
       if (!(normf >> name >> kerasMean_[i] >> kerasStd_[i]))
         throw cet::exception("CONFIG") << "FlagBkgHits: keras normalization file truncated at entry " << i;
     }
@@ -358,7 +358,7 @@ namespace mu2e
           }
         }
 
-        std::array<float,9> kerasvars;
+        std::array<float,10> kerasvars;
         kerasvars[0] = cluster.pos().Rho();
         kerasvars[1] = zmax - zmin;
         kerasvars[2] = phimax - phimin;
@@ -368,9 +368,10 @@ namespace mu2e
         kerasvars[6] = std::sqrt(sqrSumDeltaPhi / nchits);
         kerasvars[7] = std::sqrt(sqrSumDeltaZ / nchits);
         kerasvars[8] = avgEdep;
-        if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<" "<<kerasvars[7]<<" "<<kerasvars[8]<<" clusterDensity = "<<clusterDensity<<" zgap = "<<zgap<<std::endl;
+        kerasvars[9] = np;
+        if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<" "<<kerasvars[7]<<" "<<kerasvars[8]<<" "<<kerasvars[9]<<" clusterDensity = "<<clusterDensity<<" zgap = "<<zgap<<std::endl;
         if (diag_ > 0) std::cout<<"avgUdirX = "<<avgUdirX<<"  avgUdirY = "<<avgUdirY<<"  avgWireRes = "<<avgWireRes<<"  nStrawHits = "<<nhits<<std::endl;
-        for (size_t i = 0; i < 9; ++i)
+        for (size_t i = 0; i < 10; ++i)
           kerasvars[i] = (kerasvars[i] - kerasMean_[i]) / kerasStd_[i];
         std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
         cluster.setKerasQ(kerasout[0]);
