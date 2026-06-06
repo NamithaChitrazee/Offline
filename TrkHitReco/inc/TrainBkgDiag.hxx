@@ -1,4 +1,4 @@
-//Code generated automatically by TMVA for Inference of Model file [TrainBkgDiag.h5] at [Sat Jun  6 02:59:15 2026] 
+//Code generated automatically by TMVA for Inference of Model file [TrainBkgDiag.h5] at [Sat Jun  6 23:53:20 2026] 
 
 #ifndef ROOT_TMVA_SOFIE_TRAINBKGDIAG
 #define ROOT_TMVA_SOFIE_TRAINBKGDIAG
@@ -32,7 +32,7 @@ std::vector<float> fTensor_dense13kernel0 = std::vector<float>(4096);
 float * tensor_dense13kernel0 = fTensor_dense13kernel0.data();
 std::vector<float> fTensor_dense12bias0 = std::vector<float>(64);
 float * tensor_dense12bias0 = fTensor_dense12bias0.data();
-std::vector<float> fTensor_dense12kernel0 = std::vector<float>(320);
+std::vector<float> fTensor_dense12kernel0 = std::vector<float>(704);
 float * tensor_dense12kernel0 = fTensor_dense12kernel0.data();
 std::vector<float> fTensor_dense14Relu0 = std::vector<float>(32);
 float * tensor_dense14Relu0 = fTensor_dense14Relu0.data();
@@ -151,8 +151,8 @@ Session(std::string filename ="") {
       std::string err_msg = "TMVA-SOFIE failed to read the correct tensor name; expected name is tensor_dense12kernel0 , read " + tensor_name;
       throw std::runtime_error(err_msg);
     }
-   if (length != 320) {
-      std::string err_msg = "TMVA-SOFIE failed to read the correct tensor size; expected size is 320 , read " + std::to_string(length) ;
+   if (length != 704) {
+      std::string err_msg = "TMVA-SOFIE failed to read the correct tensor size; expected size is 704 , read " + std::to_string(length) ;
       throw std::runtime_error(err_msg);
     }
    for (size_t i = 0; i < length; ++i)
@@ -187,10 +187,10 @@ std::vector<float> infer(float* tensor_input4){
    char op_0_transB = 'n';
    int op_0_m = 1;
    int op_0_n = 64;
-   int op_0_k = 5;
+   int op_0_k = 11;
    float op_0_alpha = 1;
    float op_0_beta = 1;
-   int op_0_lda = 5;
+   int op_0_lda = 11;
    int op_0_ldb = 64;
    std::copy(tensor_dense12bias0bcast, tensor_dense12bias0bcast + 64, tensor_dense12Dense);
    BLAS::sgemm_(&op_0_transB, &op_0_transA, &op_0_n, &op_0_m, &op_0_k, &op_0_alpha, tensor_dense12kernel0, &op_0_ldb, tensor_input4, &op_0_lda, &op_0_beta, tensor_dense12Dense, &op_0_n);
