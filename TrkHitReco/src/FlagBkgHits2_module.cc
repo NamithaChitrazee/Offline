@@ -42,7 +42,6 @@ namespace mu2e
         fhicl::Atom<bool>             filterHits{         Name("FilterHits"),            Comment("Produce filtered ComboHit collection") };
         fhicl::Sequence<std::string>  backgroundMask{     Name("BackgroundMask"),        Comment("Bkg hit selection mask for output filtering") };
         fhicl::Atom<bool>             saveBkgClusters{    Name("SaveBkgClusters"),       Comment("Save bkg clusters") };
-        fhicl::Atom<bool>             countProtons{       Name("CountProtons"),          Comment("Count protons") };
         fhicl::Atom<float>            minEdep{            Name("MinEdep"),               Comment("Min Edep") };
         fhicl::Atom<std::string>      outputLevel{        Name("OutputLevel"),           Comment("Level of the output ComboHitCollection") };
 
@@ -67,7 +66,6 @@ namespace mu2e
       const art::ProductToken<ComboHitCollection> chtoken_;
       bool                                        filter_;
       bool                                        savebkg_;
-      bool                                        countprotons_;
       float                                       minedep_;
       StrawHitFlag                                bkgmsk_;
       StrawIdMask::Level                          level_;
@@ -86,7 +84,6 @@ namespace mu2e
 
       // module-level methods
       void classifyCluster    (BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol, std::vector<int>& hitToClusterMap, size_t iclStart = 0) const;
-      void countProton        (BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol) const;
 
       // DBScan clustering methods
       void  findClusters      (BkgClusterCollection& clusters, const ComboHitCollection& chcol, std::vector<unsigned>& idx, float deltaTime, float deltaZ, float deltaXY2);
@@ -102,7 +99,6 @@ namespace mu2e
     chtoken_{       consumes<ComboHitCollection>(config().comboHitCollection()) },
     filter_(        config().filterHits()),
     savebkg_(       config().saveBkgClusters()),
-    countprotons_(  config().countProtons()),
     minedep_(       config().minEdep()),
     bkgmsk_(        config().backgroundMask()),
     DBSminExpand_(  config().DBSminExpand()),
@@ -158,8 +154,6 @@ namespace mu2e
     unsigned nUnclustered = 0;
     for (size_t ich = 0; ich < nch; ++ich)
       if (hitToClusterMap[ich] == -1) ++nUnclustered;
-    if (countprotons_)
-      countProton(bkgccol, chfcol, chcol);
 
     auto chcol_out = std::make_unique<ComboHitCollection>();
     if (chfcol.size() > 0) {
@@ -268,21 +262,6 @@ namespace mu2e
         for (const auto& hitIdx : cluster.hits()) {
           if (chcol[hitIdx].energyDep() > minedep_)
             chfcol[hitIdx].clear(StrawHitFlag::energysel);
-        }
-      }
-    }
-  }
-
-  //------------------------------------------------------------------------------------------
-  void FlagBkgHits2::countProton(BkgClusterCollection& bkgccol, StrawHitFlagCollection& chfcol, const ComboHitCollection& chcol) const
-  {
-    for (size_t icl = 0; icl < bkgccol.size(); ++icl) {
-      auto& cluster = bkgccol[icl];
-      if (!cluster._flag.hasAllProperties(BkgClusterFlag::bkg)) {
-        StrawHitFlag bkgFlag(StrawHitFlag::bkg);
-        for (const auto& hitIdx : cluster.hits()) {
-          if (chcol[hitIdx].energyDep() > minedep_)
-            chfcol[hitIdx].merge(bkgFlag);
         }
       }
     }
