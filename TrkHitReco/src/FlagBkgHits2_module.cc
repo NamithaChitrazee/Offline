@@ -14,6 +14,7 @@
 #include "Offline/RecoDataProducts/inc/BkgCluster.hh"
 #include "Offline/RecoDataProducts/inc/BkgClusterHit.hh"
 #include "Offline/RecoDataProducts/inc/StrawDigi.hh"
+#include "Offline/RecoDataProducts/inc/IntensityInfoTimeCluster.hh"
 #include "Offline/TrkHitReco/inc/TrainBkgDiag.hxx"
 
 #include <algorithm>
@@ -112,6 +113,7 @@ namespace mu2e
     diag_(          config().diag())
   {
     produces<ComboHitCollection>();
+    produces<IntensityInfoTimeCluster>();
     if (savebkg_) {
       produces<BkgClusterHitCollection>();
       produces<BkgClusterCollection>();
@@ -199,7 +201,15 @@ namespace mu2e
         else          bkghitcol.emplace_back(BkgClusterHit(999.0, chfcol[ich]));
       }
     }
+
+    unsigned short nProtonTCs = 0;
+    for (const auto& cl : bkgccol) {
+      if (!cl._flag.hasAllProperties(BkgClusterFlag::bkg)) ++nProtonTCs;
+    }
+    auto ppii = std::make_unique<IntensityInfoTimeCluster>(nProtonTCs);
+
     event.put(std::move(chcol_out));
+    event.put(std::move(ppii));
     if (savebkg_) {
       event.put(std::make_unique<BkgClusterHitCollection>(bkghitcol));
       event.put(std::make_unique<BkgClusterCollection>(bkgccol));
