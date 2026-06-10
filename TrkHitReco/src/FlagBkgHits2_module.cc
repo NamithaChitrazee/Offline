@@ -151,6 +151,7 @@ namespace mu2e
     findClusters(bkgccol, chcol, r1Idx, deltaTime_, deltaZ_, deltaXY2_);
 
     StrawHitFlagCollection chfcol(nch);
+    for (auto& flag : chfcol) flag.merge(StrawHitFlag::energysel);
     std::vector<int> hitToClusterMap(nch, -1);
     classifyCluster(bkgccol, chfcol, chcol, hitToClusterMap);
 
@@ -264,10 +265,9 @@ namespace mu2e
       }
       //Count protons
       if (!cluster._flag.hasAllProperties(BkgClusterFlag::bkg)) {
-        StrawHitFlag bkgFlag(StrawHitFlag::bkg);
         for (const auto& hitIdx : cluster.hits()) {
           if (chcol[hitIdx].energyDep() > minedep_)
-            chfcol[hitIdx].merge(bkgFlag);
+            chfcol[hitIdx].clear(StrawHitFlag::energysel);
         }
       }
     }
