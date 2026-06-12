@@ -92,8 +92,8 @@ namespace mu2e
       bool                                        testflag_;
       std::string                                 kerasW_;
       std::string                                 kerasNorm_;
-      std::array<float,11>                        kerasMean_{};
-      std::array<float,11>                        kerasStd_{};
+      std::array<float,2>                        kerasMean_{};
+      std::array<float,2>                        kerasStd_{};
       int                                         diag_;
       float                                       r2DeltaTime_;
       float                                       r2DeltaZ_;
@@ -158,7 +158,7 @@ namespace mu2e
     if (!normf.is_open())
       throw cet::exception("CONFIG") << "FlagBkgHits: failed to open keras normalization file " << kerasNormFile;
     std::string name;
-    for (size_t i = 0; i < 11; ++i) {
+    for (size_t i = 0; i < 2; ++i) {
       if (!(normf >> name >> kerasMean_[i] >> kerasStd_[i]))
         throw cet::exception("CONFIG") << "FlagBkgHits: keras normalization file truncated at entry " << i;
     }
@@ -193,7 +193,7 @@ namespace mu2e
     for (size_t ich = 0; ich < nch; ++ich)
       if (hitToClusterMap[ich] == -1) ++nUnclustered;
     float pctUnclustered = nch > 0 ? 100.f * nUnclustered / nch : 0.f;
-    std::cout << "FlagBkgHits: nComboHits=" << nch
+    if (diag_ > 0) std::cout << "FlagBkgHits: nComboHits=" << nch
               << "  nUnclusteredR1=" << nUnclustered
               << "  (" << std::fixed << std::setprecision(1) << pctUnclustered << "% default kerasQ)"
               << std::endl;
@@ -308,17 +308,17 @@ namespace mu2e
         if (phiclust < -M_PI) phiclust += 2*M_PI;
         unsigned nchits = cluster.hits().size();
         float sumUdirX(0.f), sumUdirY(0.f), sumEdep(0.f), sumWireRes(0.f);
-        float sumZfit(0.f), sumYfit(0.f), sumZYfit(0.f), sumZ2fit(0.f);
+        //float sumZfit(0.f), sumYfit(0.f), sumZYfit(0.f), sumZ2fit(0.f);
         for (const auto& chit : cluster.hits()) {
           const auto& hit = chcol[chit];
-          float hZ = hit.pos().Z();
+          /*float hZ = hit.pos().Z();
           if (hZ < zmin) zmin = hZ;
           if (hZ > zmax) zmax = hZ;
           float hY = hit.pos().y();
           sumZfit  += hZ;
           sumYfit  += hY;
           sumZYfit += hZ * hY;
-          sumZ2fit += hZ * hZ;
+          sumZ2fit += hZ * hZ;*/
           float dx = hit.pos().x() - cluster.pos().x();
           float dy = hit.pos().y() - cluster.pos().y();
           float dz = hit.pos().Z() - cluster.pos().z();
@@ -340,14 +340,14 @@ namespace mu2e
         }
         float avgUdirX   = sumUdirX   / nchits;
         float avgUdirY   = sumUdirY   / nchits;
-        float avgEdep    = sumEdep    / nchits;
+        //float avgEdep    = sumEdep    / nchits;
         float avgWireRes = sumWireRes / nchits;
-        float slopeYZ(0.f);
+        /*float slopeYZ(0.f);
         {
           float denom = static_cast<float>(nchits) * sumZ2fit - sumZfit * sumZfit;
           if (std::abs(denom) > 1e-6f)
             slopeYZ = (static_cast<float>(nchits) * sumZYfit - sumZfit * sumYfit) / denom;
-        }
+            }*/
         float clusterDensity(0.f);
         float area = (zmax - zmin) * std::max(phimax - phimin, 1e-6f);
         if (area > 0.f)
@@ -370,8 +370,8 @@ namespace mu2e
           }
         }
 
-        std::array<float,11> kerasvars;
-        kerasvars[0]  = cluster.pos().Rho();
+        std::array<float,2> kerasvars;
+        /*kerasvars[0]  = cluster.pos().Rho();
         kerasvars[1]  = zmax - zmin;
         kerasvars[2]  = phimax - phimin;
         kerasvars[3]  = nhits;
@@ -382,9 +382,13 @@ namespace mu2e
         kerasvars[8]  = avgEdep;
         kerasvars[9]  = np;
         kerasvars[10] = slopeYZ;
-        if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<" "<<kerasvars[7]<<" "<<kerasvars[8]<<" "<<kerasvars[9]<<" "<<kerasvars[10]<<" clusterDensity = "<<clusterDensity<<" zgap = "<<zgap<<std::endl;
-        if (diag_ > 0) std::cout<<"avgUdirX = "<<avgUdirX<<"  avgUdirY = "<<avgUdirY<<"  avgWireRes = "<<avgWireRes<<"  nStrawHits = "<<nhits<<std::endl;
-        for (size_t i = 0; i < 11; ++i)
+        if (diag_ > 0) std::cout<<"Keras variables = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]<<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<" "<<kerasvars[7]<<" "<<kerasvars[8]<<" "<<kerasvars[9]<<" "<<kerasvars[10]<<" clusterDensity = "<<clusterDensity<<" zgap = "<<zgap<<std::endl;*/
+        //kerasvars[0]  = cluster.pos().Rho();
+        kerasvars[0]  = std::sqrt(sqrSumDeltaPhi / nchits);
+        kerasvars[1]  = np;
+        if (diag_ > 0) std::cout<<"avgUdirX = "<<avgUdirX<<"  avgUdirY = "<<avgUdirY<<"  avgWireRes = "<<avgWireRes<<"  nStrawHits = "<<nhits
+                                <<" clusterDensity = "<<clusterDensity<<" zgap = "<<zgap<<std::endl;
+        for (size_t i = 0; i < 2; ++i)
           kerasvars[i] = (kerasvars[i] - kerasMean_[i]) / kerasStd_[i];
         std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
         cluster.setKerasQ(kerasout[0]);

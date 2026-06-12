@@ -256,7 +256,7 @@ namespace mu2e
           sqrSumDeltaPhi += dphi_rel*dphi_rel;
         }
         rmsphi = std::sqrt(sqrSumDeltaPhi / nchits);
-        if(rmsphi < 0.12 or np > 20){
+        if((rmsphi < 0.12 and cluster.pos().Rho() > 625) or np > 20){
           cluster.setKerasQ(1.0);
           StrawHitFlag flag(StrawHitFlag::bkgclust);
           flag.merge(StrawHitFlag(StrawHitFlag::bkg));
@@ -267,7 +267,7 @@ namespace mu2e
           }
         }
       }
-      //Count protons
+      //proton hit flagging
       if (!cluster._flag.hasAllProperties(BkgClusterFlag::bkg)) {
         for (const auto& hitIdx : cluster.hits()) {
           if (chcol[hitIdx].energyDep() > minedep_)
