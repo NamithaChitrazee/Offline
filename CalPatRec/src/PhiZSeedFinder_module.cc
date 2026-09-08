@@ -18,6 +18,13 @@
 #include <cmath>
 #include <vector>
 #include <numeric>    // for std::iota
+#include <string>     // for std::string  (debug messages)
+#include <sstream>    // for std::ostringstream (debug messages)
+#include <iomanip>    // for std::setw / std::setprecision
+#include <iostream>
+#include <map>        // for std::map (duplicate-hit bookkeeping in ev5_fit_slope_ver4)
+#include <tuple>      // for std::tuple (debug point dump in ev5_fit_slope_ver4)
+#include <limits>     // for std::numeric_limits (turn-number scan in ev5_fit_slope_ver5)
 // ROOT
 #include "TH1F.h"
 #include "TH2F.h"
@@ -254,6 +261,28 @@ namespace mu2e {
         double ortho_nhit_slope_b;
         double ortho_nhit_slope_c;
       };
+      // ---------------------------------------------------------
+      // New Structures inspired by DeltaFinderTypes::FaceZ_t
+      // ---------------------------------------------------------
+      // Holds all hits belonging to one specific Face (Z-layer)
+      struct PhiZFace {
+        // Indices pointing to the original _HitsInCluster or _chcol vector
+        std::vector<int> fHitIndices;
+
+        // Helper to clear for next event
+        void clear() { fHitIndices.clear(); }
+      };
+
+      // Holds the 4 faces (Z-layers) for one Station
+      struct PhiZStation {
+        // 2 Planes * 2 Faces = 4 unique Z-layers per station
+        PhiZFace fFaces[4];
+
+        void clear() {
+            for(int i=0; i<4; ++i) fFaces[i].clear();
+        }
+      };
+
       // tracker geometric information data list
       struct trackerData {
         int station;
@@ -275,6 +304,50 @@ namespace mu2e {
         double verticalX;  // Only valid if the line is vertical
       };
       struct HelixFinderData {
+      };
+      // Result of evaluating one candidate merge pair
+      struct ev5_MergeCandidate {
+        int    refIdx      = -1;
+        int    testIdx     = -1;
+        bool   valid       = false;   // passed all vetoes
+
+        // --- ranking quantities, filled only for a mergeable pair ---
+        // primary   : chi2/ndf of the merged phi-z fit after the n*2pi shift
+        // secondary : chi2/ndf of the circle fit, used only to break ties
+        double chi2_circle = 0.0;   // circle fit chi2 of the merged hypothesis (total)
+        double chi2_phiz   = 0.0;   // phi-z fit chi2 of the merged hypothesis (total)
+        double ndf_circle  = 0.0;
+        double ndf_phiz    = 0.0;
+        double Zalpha      = 0.0;   // pull of the slope difference (VETO-1)
+        double Zphi        = 0.0;   // pull of the extrapolated phi difference (VETO-2)
+        double fDropped    = 0.0;   // fraction of hits removed by the clean-up
+
+        // --- helix parameters ---
+        double xC = 0.0, yC = 0.0, rC = 0.0;
+        double alpha = 0.0, alphaError = 0.0;
+        double beta  = 0.0, betaError  = 0.0;
+        int    deltaCorrection = 0;   // 2pi turn correction applied to the test segment
+
+        // --- bookkeeping filled in for the debug summary table ---
+        std::string rejectReason;      // empty when the pair is accepted
+        int    nHitRef        = 0;     // hits in ref  after the circle clean-up
+        int    nHitTest       = 0;     // hits in test after the circle clean-up
+        int    nHitRefIn      = 0;     // hits in ref  before the clean-up
+        int    nHitTestIn     = 0;     // hits in test before the clean-up
+        int    nDropped       = 0;
+        double chi2ndf_circle = 0.0;
+        double chi2ndf_phiz   = 0.0;
+        double alphaRef       = 0.0, alphaRefErr  = 0.0, chi2ndfRef  = 0.0;
+        double alphaTest      = 0.0, alphaTestErr = 0.0, chi2ndfTest = 0.0;
+        double alphaDiff      = 0.0, alphaThr     = 0.0;
+        double dPhi           = 0.0, dPhiThr      = 0.0;
+        bool   okAlpha        = false;
+        bool   okPhi          = false;
+        bool   okFit          = false;
+
+        // --- the merge product itself (used directly when committing) ---
+        std::vector<ev5_HitsInNthStation> mergedHits;
+        std::vector<ev5_Segment>          mergedDiag;
       };
   protected:
 //-----------------------------------------------------------------------------
@@ -341,6 +414,7 @@ namespace mu2e {
     const std::vector<ev5_HitsInNthStation>& seg2);
     void ev5_FillHitsInTimeCluster(int tc);
     void ev5_FillHitsInTimeCluster_ver2(int tc);
+    void organizeHitsByFace();
     void ev5_SegmentSearchInTriplet(std::vector<std::vector<ev5_Segment>>& diag_best_triplet_segments, double thre_residual, int tc);
     double ev5_DeltaPhi(double x1, double y1, double x2, double y2);
     double ev5_ParticleDirection(double x1, double y1, double x2, double y2);
@@ -359,16 +433,26 @@ namespace mu2e {
     void ev5_select_best_segments_cleanup(std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag, double threshold_deltaphi);
     void countHits(const std::vector<ev5_HitsInNthStation>& seg1, const std::vector<ev5_HitsInNthStation>& seg2, unsigned& nh1, unsigned& nh2, unsigned& nover);
     void findchisq(std::vector<ev5_HitsInNthStation> const& segment, double& chizphi) const;
+    void findchisq_ver2(const std::vector<ev5_HitsInNthStation>& segment);
     void ev5_select_best_segments_step_07(std::vector<std::vector<ev5_HitsInNthStation>>& all_BestSegmentInfo, std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag, double threshold_deltaphi, int& NumberOfSegments);
  void mergeSegmentsAll(
     std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment,
     std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag,
     double thre_residual);
+    // Side-effect free evaluation of one merge pair.
+    // Returns true if the pair passes all vetoes and is a merge candidate.
+    bool evaluateMergePair(const std::vector<ev5_HitsInNthStation>& segRef,
+                           const std::vector<ev5_Segment>&          diagRef,
+                           const std::vector<ev5_HitsInNthStation>& segTest,
+                           const std::vector<ev5_Segment>&          diagTest,
+                           int refIdx, int testIdx,
+                           ev5_MergeCandidate& cand);
     void ev5_select_best_segments_step_08(std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag, double threshold_deltaphi, int& NumberOfSegments);
     void ev5_fit_slope(const std::vector<ev5_Segment>& hit_diag, double& alpha, double& beta, double& chindf);
     void ev5_fit_slope_ver2(int i, double& alpha, double& beta, double& chindf);
     void ev5_fit_slope_ver3(int i, double& alpha, double& beta, double& chindf);
     void ev5_fit_slope_ver4(int index, double& alpha, double& alphaError, double& beta, double& betaError, double& chindf);
+    void ev5_fit_slope_ver5(int index, double& alpha, double& alphaError, double& beta, double& betaError, double& chindf);
 //-----------------------------------------------------------------------------
 // helper functions for helix finder
 //-----------------------------------------------------------------------------
@@ -393,6 +477,11 @@ namespace mu2e {
     void plot_PhiVsZ_forSegment_ver2(int ith_segment, int jth_segment, double alpha, double beta, double Chi2NDF);
     void plot_PhiVsZ_forSegment_ver3(int tc, int isegment);
     void plot_PhiVsZ_forEachStep(std::vector<std::vector<ev5_HitsInNthStation>>& ThisIsBestSegmen, const char* filename, int tc, int loopIndex);
+    void plot_PhiVsZ_alignment_step(int tc, int isegment, int stepIdx, int currentSegIdx, double slope, double intercept);
+    void plot_PhiVsZ_RawStep(const std::vector<std::vector<ev5_HitsInNthStation>>& segments,
+                         const std::string& stepName,
+                         int tc,
+                         int station);
     void plot_CirclePhiVsZ_forSegment(int tc, int isegment);
     void plot_2PiAmbiguityPhiVsZ_forSegment(int tc, int isegment);
     void plot_2PiAmbiguityPhiVsZ_forSegment_mod(int tc, int isegment);
@@ -435,6 +524,10 @@ namespace mu2e {
     std::vector<std::vector<ev5_HitsInNthStation>> _SSegmentHits;//ComboHits and some helper variables for segments
     std::vector<cHit> _tcHits;
     ::LsqSums4 _circleFitter;
+    // thresholds for mergeSegmentsAll (can be promoted to fhicl params)
+    double _mergeMaxChi2NDF  = 5.0;    // target chi2/ndf for the circle clean-up
+    double _mergeMaxZalpha   = 5.0;    // upper limit on the slope pull (VETO-1)
+    double _mergeMaxZphi     = 5.0;    // upper limit on the phase pull (VETO-2)
     float               _bz0;
     double _dphidz;
     double _fz0;
@@ -457,6 +550,8 @@ namespace mu2e {
     size_t                             _bestPlotIndex;
     size_t                             _bestLineSegment;
     int                                _mcParticleInTC;
+    // The main container: 18 Stations
+    PhiZStation _stationData[18];
 //-----------------------------------------------------------------------------
 // constants
 //-----------------------------------------------------------------------------
@@ -639,6 +734,33 @@ namespace mu2e {
     std::sort(_HitsInCluster.begin(), _HitsInCluster.end(), [](const ev5_HitsInNthStation& a, const ev5_HitsInNthStation& b) { return a.z < b.z; } );
 }
 //-----------------------------------------------------------------------------
+void PhiZSeedFinder::organizeHitsByFace() {
+    // 1. Clear previous event data
+    for(int s=0; s<18; ++s) _stationData[s].clear();
+
+    // 2. Loop over your collected hits (Assuming _HitsInCluster is already filled)
+    for (size_t i = 0; i < _HitsInCluster.size(); ++i) {
+        const auto& hit = _HitsInCluster[i];
+
+        // 3. Calculate the unique Face Index (0 to 3) within the station
+        // Logic: Plane (0 or 1) * 2 + Face (0 or 1)
+        // Plane 0 Face 0 -> Index 0
+        // Plane 0 Face 1 -> Index 1
+        // Plane 1 Face 0 -> Index 2
+        // Plane 1 Face 1 -> Index 3
+
+        // Note: hit.plane is usually 0-35 globally, or 0-1 locally.
+        // Ensure you use the local plane index (0 or 1).
+        int localPlane = hit.plane % 2;
+        int faceIndex  = (localPlane * 2) + hit.face;
+
+        // 4. Store the index of this hit in the structured container
+        if (hit.station < 18 && faceIndex < 4) {
+            _stationData[hit.station].fFaces[faceIndex].fHitIndices.push_back(i);
+        }
+    }
+}
+//-----------------------------------------------------------------------------
     void PhiZSeedFinder::clusterInfo(int Tc){
     std::cout << ">>> INFORMATION in PhiZFinder::clusterInfo: " << std::endl;
     std::cout << "===========================================" << std::endl;
@@ -673,17 +795,25 @@ namespace mu2e {
       std::vector<std::vector<ev5_Segment>> all_ThisIsBestSegment_Diag;
       all_ThisIsBestSegment.clear();
       all_ThisIsBestSegment_Diag.clear();
+
+      // 1. Organize hits into the [Station][Face] grid ONCE
+      organizeHitsByFace();
+
+
       // number of stations
       // search slope in 3 consecutive stations
       // Loop from 0 to 16 station
-      ///int nstation = 18;
+      //int nstation = 18;
+      //-------------------------------
+      // start loop on stations
+      //-------------------------------
       for(int n=17; n>1; n--){
          //if(n==6) break;
           //----------------------------------------------------
           // Find triplet
           //----------------------------------------------------
           // Take combo hits in n-th, (n+1)-th, (n+2)-th stations
-          std::vector<ev5_HitsInNthStation> Hits_In_Station[3];
+          /*std::vector<ev5_HitsInNthStation> Hits_In_Station[3];
           for(int k=0; k<3;k++) Hits_In_Station[k].clear();
           for(int j=0; j<(int)_HitsInCluster.size(); j++){
               ev5_HitsInNthStation hitsin_nthstation;
@@ -709,11 +839,62 @@ namespace mu2e {
         size_t nCHsInStn_2 = Hits_In_Station[1].size();
         size_t nCHsInStn_3 = Hits_In_Station[2].size();
         int nHitInStation = (int)nCHsInStn_1 + (int)nCHsInStn_2 + (int)nCHsInStn_3;
-        //if(!(nHitInStation >= 5)) continue;
+        *///if(!(nHitInStation >= 5)) continue;
         // (1st, 2nd, 3rd) = (CH>=1, CH>=1, CH>=1)
         //if(!((int)nCHsInStn_1 >= 1)) continue;
         //if(!((int)nCHsInStn_2 >= 1)) continue;
         //if(!((int)nCHsInStn_3 >= 1)) continue;
+
+        // ----------------------------------------------------
+          // Find triplet (Optimized using _stationData)
+          // ----------------------------------------------------
+
+          // 1. Clear local vectors for the 3 stations in this triplet
+          std::vector<ev5_HitsInNthStation> Hits_In_Station[3];
+
+          // 2. Define which stations we are looking at: n, n-1, n-2
+          int targetStations[3] = {n, n - 1, n - 2};
+
+          // 3. Loop over the 3 target stations (0=n, 1=n-1, 2=n-2)
+          for (int k = 0; k < 3; ++k) {
+              int stnIdx = targetStations[k];
+
+              // Safety check: ensure station index is valid (0 to 17)
+              if (stnIdx < 0 || stnIdx >= 18) continue;
+
+              // 4. Loop over the 4 Faces in this station (Plane 0/1, Face 0/1)
+              for (int f = 0; f < 4; ++f) {
+                  // Access the pre-sorted list of indices for this face
+                  const auto& faceHits = _stationData[stnIdx].fFaces[f].fHitIndices;
+
+                  // 5. Retrieve the actual hit objects using the indices
+                  for (int hitIndex : faceHits) {
+
+                      // Access the master list directly by index
+                      // NOTE: We make a COPY here so we can add it to the local list.
+                      // If you want to modify 'used' flags later, you rely on the index match.
+                      ev5_HitsInNthStation hitObj = _HitsInCluster.at(hitIndex);
+
+                      // CRITICAL: Skip if this hit is already used by a previous segment
+                      if (hitObj.used) continue;
+
+                      // Add to the local list for this station
+                      Hits_In_Station[k].push_back(hitObj);
+                  }
+              }
+          }
+
+          // ----------------------------------------------------
+          // End of optimized collection
+          // ----------------------------------------------------
+
+          // [The rest of your code follows unchanged...]
+          // 2 >= ComboHits [/station]
+          size_t nCHsInStn_1 = Hits_In_Station[0].size();
+          size_t nCHsInStn_2 = Hits_In_Station[1].size();
+          size_t nCHsInStn_3 = Hits_In_Station[2].size();
+          int nHitInStation = (int)nCHsInStn_1 + (int)nCHsInStn_2 + (int)nCHsInStn_3;
+          // ...
 /*      std::cout << "-----------------------------------" << std::endl;
       std::cout << "              Station               " << n        << std::endl;
       std::cout << "-----------------------------------" << std::endl;
@@ -742,7 +923,211 @@ namespace mu2e {
         diag_segment_candidates.clear();
         //Find segment candidate
         //Loop 1st station
+        // ... (Outer loops j and k remain the same) ...
         if(nHitInStation >= 5 and (int)nCHsInStn_1 >= 1 and (int)nCHsInStn_2 >= 1 and (int)nCHsInStn_3 >= 1){
+          for(int j=0; j<(int)nCHsInStn_1; j++){
+            for(int k=0; k<(int)nCHsInStn_3; k++){
+
+              // -----------------------------------------------------------
+              // 1. Setup the Seed (Slope Calculation)
+              // -----------------------------------------------------------
+              int flag_hit[3] = {0};
+              double first_Hit[4] = {Hits_In_Station[0].at(j).x, Hits_In_Station[0].at(j).y, Hits_In_Station[0].at(j).z, Hits_In_Station[0].at(j).phi};
+              double last_Hit[4]  = {Hits_In_Station[2].at(k).x, Hits_In_Station[2].at(k).y, Hits_In_Station[2].at(k).z, Hits_In_Station[2].at(k).phi};
+
+              double DeltaPhi = ev5_DeltaPhi(first_Hit[0], first_Hit[1], last_Hit[0], last_Hit[1]);
+              double ref_sign = ev5_ParticleDirection(first_Hit[0], first_Hit[1], last_Hit[0], last_Hit[1]);
+
+              if(DeltaPhi > 2.0) continue;
+
+              double phi[3] = {0.0, 0.0, ref_sign*DeltaPhi};
+              double z[3]   = {first_Hit[2], 0.0, last_Hit[2]};
+
+              // Linear Fit for Slope (Alpha/Beta)
+              double mean_phi = (phi[0] + phi[2])/2.0;
+              double mean_z   = (z[0] + z[2])/2.0;
+              double m_n[3] = {0.0};
+              double m_d[3] = {0.0};
+              m_n[0] = (z[0] - mean_z)*(phi[0] - mean_phi);
+              m_n[2] = (z[2] - mean_z)*(phi[2] - mean_phi);
+              m_d[0] = pow(z[0] - mean_z, 2);
+              m_d[2] = pow(z[2] - mean_z, 2);
+              double slope_alpha = (m_n[0] + m_n[2])/(m_d[0] + m_d[2]);
+              double slope_beta  = phi[0] - slope_alpha*z[0];
+
+              // -----------------------------------------------------------
+              // 2. Prepare Candidate Containers
+              // -----------------------------------------------------------
+              std::vector<ev5_HitsInNthStation> hit_candidates;
+              std::vector<ev5_Segment> SegmentInTripletStation;
+
+              // Add Seed Hit 1 (Station 0)
+              hit_candidates.push_back(Hits_In_Station[0].at(j));
+              ev5_Segment hit_first;
+              hit_first.deltaphi = 0.0;
+              hit_first.z = Hits_In_Station[0].at(j).z;
+              hit_first.alpha = slope_alpha;
+              hit_first.beta = slope_beta;
+              hit_first.station = Hits_In_Station[0].at(j).station;
+              hit_first.usedforfit = true;
+              SegmentInTripletStation.push_back(hit_first);
+              flag_hit[0] = 1;
+
+              // Add Seed Hit 3 (Station 2)
+              hit_candidates.push_back(Hits_In_Station[2].at(k));
+              ev5_Segment hit_last;
+              hit_last.deltaphi = phi[2];
+              hit_last.z = Hits_In_Station[2].at(k).z;
+              hit_last.alpha = slope_alpha;
+              hit_last.beta = slope_beta;
+              hit_last.station = Hits_In_Station[2].at(k).station;
+              hit_last.usedforfit = true;
+              SegmentInTripletStation.push_back(hit_last);
+              flag_hit[2] = 1;
+
+              // Identify faces of the seed hits to avoid duplicates
+              // Formula: FaceIndex = (Plane % 2) * 2 + Face
+              int seedFace0 = (Hits_In_Station[0].at(j).plane % 2) * 2 + Hits_In_Station[0].at(j).face;
+              int seedFace2 = (Hits_In_Station[2].at(k).plane % 2) * 2 + Hits_In_Station[2].at(k).face;
+
+              // -----------------------------------------------------------
+              // 3. Search Loop: ONE HIT PER FACE Logic
+              // -----------------------------------------------------------
+              // We need arrays to store the BEST hit index for each of the 4 faces in each station
+              // Initialize with -1 (no hit found)
+              int bestIdx_St0[4] = {-1, -1, -1, -1}; double bestRes_St0[4] = {999., 999., 999., 999.};
+              int bestIdx_St1[4] = {-1, -1, -1, -1}; double bestRes_St1[4] = {999., 999., 999., 999.};
+              int bestIdx_St2[4] = {-1, -1, -1, -1}; double bestRes_St2[4] = {999., 999., 999., 999.};
+
+              // --- Station 0 (n) ---
+              for(int l=0; l<(int)nCHsInStn_1; l++){
+                if(l==j) continue; // Skip seed hit itself
+                int f = (Hits_In_Station[0].at(l).plane % 2) * 2 + Hits_In_Station[0].at(l).face;
+                if(f == seedFace0) continue; // Don't pick another hit from the seed's face
+
+                double middle_Hit[3] = {Hits_In_Station[0].at(l).x, Hits_In_Station[0].at(l).y, Hits_In_Station[0].at(l).z};
+                double dPhi = ev5_DeltaPhi(first_Hit[0], first_Hit[1], middle_Hit[0], middle_Hit[1]);
+                double sign = ev5_ParticleDirection(first_Hit[0], first_Hit[1], middle_Hit[0], middle_Hit[1]);
+                double this_phi = sign*dPhi;
+                double residual = ev5_ResidualDeltaPhi(slope_alpha, slope_beta, first_Hit[2], 0.0, middle_Hit[2], this_phi);
+
+                // If better than current best for this face, store it
+                if(residual < thre_residual && residual < bestRes_St0[f]){
+                   bestRes_St0[f] = residual;
+                   bestIdx_St0[f] = l;
+                }
+              }
+
+              // --- Station 1 (n-1) ---
+              for(int l=0; l<(int)nCHsInStn_2; l++){
+                int f = (Hits_In_Station[1].at(l).plane % 2) * 2 + Hits_In_Station[1].at(l).face;
+
+                double middle_Hit[3] = {Hits_In_Station[1].at(l).x, Hits_In_Station[1].at(l).y, Hits_In_Station[1].at(l).z};
+                double dPhi = ev5_DeltaPhi(first_Hit[0], first_Hit[1], middle_Hit[0], middle_Hit[1]);
+                double sign = ev5_ParticleDirection(first_Hit[0], first_Hit[1], middle_Hit[0], middle_Hit[1]);
+                double this_phi = sign*dPhi;
+                double residual = ev5_ResidualDeltaPhi(slope_alpha, slope_beta, first_Hit[2], 0.0, middle_Hit[2], this_phi);
+
+                if(residual < thre_residual && residual < bestRes_St1[f]){
+                   bestRes_St1[f] = residual;
+                   bestIdx_St1[f] = l;
+                   // Mark flag true if we found at least one good hit in Station 1
+                   flag_hit[1] = 1;
+                }
+              }
+
+              // --- Station 2 (n-2) ---
+              for(int l=0; l<(int)nCHsInStn_3; l++){
+                if(l==k) continue; // Skip seed hit itself
+                int f = (Hits_In_Station[2].at(l).plane % 2) * 2 + Hits_In_Station[2].at(l).face;
+                if(f == seedFace2) continue; // Don't pick another hit from the seed's face
+
+                double middle_Hit[3] = {Hits_In_Station[2].at(l).x, Hits_In_Station[2].at(l).y, Hits_In_Station[2].at(l).z};
+                double dPhi = ev5_DeltaPhi(first_Hit[0], first_Hit[1], middle_Hit[0], middle_Hit[1]);
+                double sign = ev5_ParticleDirection(first_Hit[0], first_Hit[1], middle_Hit[0], middle_Hit[1]);
+                double this_phi = sign*dPhi;
+                double residual = ev5_ResidualDeltaPhi(slope_alpha, slope_beta, first_Hit[2], 0.0, middle_Hit[2], this_phi);
+
+                if(residual < thre_residual && residual < bestRes_St2[f]){
+                   bestRes_St2[f] = residual;
+                   bestIdx_St2[f] = l;
+                }
+              }
+
+              // -----------------------------------------------------------
+              // 4. Fill the Vectors with the Winners
+              // -----------------------------------------------------------
+
+              // Helper lambda to add a hit (simplifies code)
+              auto addHit = [&](const ev5_HitsInNthStation& h, double res) {
+                  hit_candidates.push_back(h);
+
+                  // Re-calculate phi for the ev5_Segment struct
+                  double mid[3] = {h.x, h.y, h.z};
+                  double dP = ev5_DeltaPhi(first_Hit[0], first_Hit[1], mid[0], mid[1]);
+                  double sg = ev5_ParticleDirection(first_Hit[0], first_Hit[1], mid[0], mid[1]);
+
+                  ev5_Segment seg;
+                  seg.deltaphi = sg * dP;
+                  seg.z = h.z;
+                  seg.alpha = slope_alpha;
+                  seg.beta = slope_beta;
+                  seg.station = h.station;
+                  seg.usedforfit = false;
+                  SegmentInTripletStation.push_back(seg);
+              };
+
+              // Collect Station 0 Winners
+              for(int f=0; f<4; ++f) {
+                  if(bestIdx_St0[f] != -1) {
+                      addHit(Hits_In_Station[0].at(bestIdx_St0[f]), bestRes_St0[f]);
+                      flag_hit[0] = 1; // Mark strictly if we added extras, though seed is already there
+                  }
+              }
+              // Collect Station 1 Winners
+              for(int f=0; f<4; ++f) {
+                  if(bestIdx_St1[f] != -1) {
+                      addHit(Hits_In_Station[1].at(bestIdx_St1[f]), bestRes_St1[f]);
+                  }
+              }
+              // Collect Station 2 Winners
+              for(int f=0; f<4; ++f) {
+                  if(bestIdx_St2[f] != -1) {
+                      addHit(Hits_In_Station[2].at(bestIdx_St2[f]), bestRes_St2[f]);
+                      flag_hit[2] = 1;
+                  }
+              }
+
+              // -----------------------------------------------------------
+              // 5. Final Quality Check
+              // -----------------------------------------------------------
+              int hitInSegment = (int)hit_candidates.size();
+              if(hitInSegment < 5) continue;
+              if(flag_hit[0] == 0 or flag_hit[1] == 0 or flag_hit[2] == 0) continue;
+
+              bool segment_quality = ev5_TripletQuality(SegmentInTripletStation);
+              if(segment_quality == 0) continue;
+
+              segment_candidates.push_back(hit_candidates);
+              diag_segment_candidates.push_back(SegmentInTripletStation);
+
+            } // end loop k
+          } // end loop j
+        } // end if check
+
+        // ==========================================================
+        // INSERT PLOTTING HERE
+        // This executes once per Station 'n', showing all candidates
+        // found in the triplet (n, n-1, n-2)
+        // ==========================================================
+        std::cout<<"step_00_raw = "<<segment_candidates.size()<<std::endl;
+        if (!segment_candidates.empty()) {
+             // Pass "step_00_raw" or similar as the stage name
+             // 'tc' is the TimeCluster index, 'n' is the current Station index
+             plot_PhiVsZ_RawStep(segment_candidates, "step_00_raw", tc, n);
+        }
+
+ /*       if(nHitInStation >= 5 and (int)nCHsInStn_1 >= 1 and (int)nCHsInStn_2 >= 1 and (int)nCHsInStn_3 >= 1){
           for(int j=0; j<(int)nCHsInStn_1; j++){
             //Loop 3rd station
             for(int k=0; k<(int)nCHsInStn_3; k++){
@@ -893,11 +1278,17 @@ namespace mu2e {
             }
           }//end segment candidate search
         }
+        */
         //-------------------------------------------------------------
         //        End Find segments in 3 consecutive stations
         //-------------------------------------------------------------
+
+
+
+
       //---------------------------------------------------------------------
       // Select several best candidates in 3 consecutive stations
+      // Remove duplicat segments
       //---------------------------------------------------------------------
       std::vector<std::vector<ev5_HitsInNthStation>> ThisIsBestSegment;
       std::vector<std::vector<ev5_Segment>> ThisIsBestSegment_Diag;
@@ -936,6 +1327,46 @@ namespace mu2e {
           }
         }
       }
+        std::cout<<"step_01 = "<<ThisIsBestSegment.size()<<std::endl;
+        // ========================================================
+        // DEBUG PRINTOUT: Print hits inside ThisIsBestSegment
+        // ========================================================
+        std::cout << "\n========================================================================\n";
+        std::cout << " [DEBUG] HITS IN ThisIsBestSegment (Station: " << n << ")\n";
+        std::cout << " Total Segments: " << ThisIsBestSegment.size() << "\n";
+        std::cout << "------------------------------------------------------------------------\n";
+        std::cout << std::left
+                  << std::setw(10) << "SegIdx"
+                  << std::setw(10) << "HitIdx"
+                  << std::setw(10) << "Station"
+                  << std::setw(12) << "X [mm]"
+                  << std::setw(12) << "Y [mm]"
+                  << std::setw(12) << "Z [mm]"
+                  << std::setw(12) << "Phi [rad]" << "\n";
+        std::cout << "------------------------------------------------------------------------\n";
+
+        // Outer loop: iterate through each segment
+        for (size_t seg_idx = 0; seg_idx < ThisIsBestSegment.size(); ++seg_idx) {
+            // Inner loop: iterate through the hits within this specific segment
+            for (const auto& h : ThisIsBestSegment[seg_idx]) {
+                double phi = std::atan2(h.y, h.x); // Calculate phi for the printout
+                std::cout << std::left
+                          << std::setw(10) << seg_idx
+                          << std::setw(10) << h.hitIndice
+                          << std::setw(10) << h.station
+                          << std::setw(12) << std::fixed << std::setprecision(3) << h.x
+                          << std::setw(12) << std::fixed << std::setprecision(3) << h.y
+                          << std::setw(12) << std::fixed << std::setprecision(3) << h.z
+                          << std::setw(12) << std::fixed << std::setprecision(4) << phi << "\n";
+            }
+        }
+        std::cout << "========================================================================\n";
+        // ========================================================
+        // ========================================================
+        std::cout<<"statin = "<<n<<std::endl;
+        if (!ThisIsBestSegment.empty()) {
+             plot_PhiVsZ_RawStep(ThisIsBestSegment, "step_01", tc, n);
+        }
       //---------------------------------------------------------------------
       // Before extending the slope, flag hits already used in best candidates
       //---------------------------------------------------------------------
@@ -982,6 +1413,10 @@ namespace mu2e {
             if(_HitsInCluster.at(l).hitIndice == ThisIsBestSegment.at(j).at(k).hitIndice) _HitsInCluster.at(l).used = true;
           }
         }
+      }
+      std::cout<<"step_03 = "<<ThisIsBestSegment.size()<<std::endl;
+        if (!ThisIsBestSegment.empty()) {
+             plot_PhiVsZ_RawStep(ThisIsBestSegment, "step_03", tc, n);
       }
       // falg hits as used and removed used hits in other segments to protect hits already used for other station cycle
       //std::cout<<" Here ThisIsBestSegment.size() = "<<ThisIsBestSegment.size()<<std::endl;
@@ -1065,6 +1500,7 @@ namespace mu2e {
       //-------------------------------
       // End loop on stations
       //-------------------------------
+
       _segmentHits.clear();
       _segmentHits = all_ThisIsBestSegment;
       std::cout<<"End loop on stations"<<std::endl;
@@ -1082,6 +1518,8 @@ namespace mu2e {
         std::cout<<"k/hitIndice = "<<k<<"/"<<_segmentHits.at(j).at(k).hitIndice<<std::endl;
         }
       }*/
+      plot_PhiVsZ_forEachStep(_segmentHits, "step_05A", tc, 999);
+      std::cout<<"ev5_select_best_segments_step_05A size = "<<_segmentHits.size()<<std::endl;
       // falg hits as used and removed used hits in other segments to protect hits already used for other station cycle
       //std::cout<<" Here ThisIsBestSegment.size() = "<<ThisIsBestSegment.size()<<std::endl;
       ev5_select_best_segments_step_06A(all_ThisIsBestSegment, all_ThisIsBestSegment_Diag);
@@ -1095,11 +1533,13 @@ namespace mu2e {
         std::cout<<"k/strawhits/hitIndice = "<<k<<"/"<<ThisIsBestSegment.at(j).at(k).strawhits<<"/"<<ThisIsBestSegment.at(j).at(k).hitIndice<<std::endl;
         }
       }*/
-      //plot_PhiVsZ_forEachStep(_segmentHits, "step_06", tc, 999);
+      plot_PhiVsZ_forEachStep(_segmentHits, "step_06A", tc, 999);
+      std::cout<<"ev5_select_best_segments_step_06A size = "<<_segmentHits.size()<<std::endl;
       // remove duplicate segments based on hitID. remove segments based on slope value, fraction of overlapped hits, and Chi2/NDF
       ev5_select_best_segments_step_06(all_ThisIsBestSegment, all_ThisIsBestSegment_Diag, thre_residual);
       _segmentHits.clear();
       _segmentHits = all_ThisIsBestSegment;
+      plot_PhiVsZ_forEachStep(_segmentHits, "step_06", tc, 999);
       std::cout<<"ev5_select_best_segments_step_06 size = "<<_segmentHits.size()<<std::endl;
       for(int j=0; j<(int)_segmentHits.size(); j++){
         std::cout<<"size = "<<all_ThisIsBestSegment.at(j).size()<<std::endl;
@@ -1129,7 +1569,7 @@ namespace mu2e {
       ev5_select_best_segments_cleanup(all_ThisIsBestSegment, all_ThisIsBestSegment_Diag, thre_residual);
       _segmentHits.clear();
       _segmentHits = all_ThisIsBestSegment;
-      plot_PhiVsZ_forEachStep(_segmentHits, "step_06", tc, 999);
+      //plot_PhiVsZ_forEachStep(_segmentHits, "step_06", tc, 999);
       //remove hits in diag that are not used in segments
       for (size_t i = 0; i < all_ThisIsBestSegment_Diag.size(); i++) {
     // Reference to the i-th group of diag segments
@@ -1157,7 +1597,8 @@ namespace mu2e {
             j++; // only increment if nothing was erased
         }
     }
-}
+    }
+
       _segmentHits.clear();
       _segmentHits = all_ThisIsBestSegment;
       std::cout<<"merge segments based on slope value size = "<<_segmentHits.size()<<std::endl;
@@ -1288,11 +1729,19 @@ std::cout << std::left
       }
       ev5_select_best_segments_step_08(all_ThisIsBestSegment, all_ThisIsBestSegment_Diag, thre_residual, number_of_merged_segments);
 */
+
+
       //fill
       _segmentHits.clear();
       _segmentHits = all_ThisIsBestSegment;
       diag_best_triplet_segments = all_ThisIsBestSegment_Diag;
+
+      //print
+
+
+
 }//end ev5_SegmentSearchInTriplet
+
 //-----------------------------------------------------------------------------
  //PhiZSeedFinder::HelixComp PhiZSeedFinder::compareHelices(art::Event const& evt, HelixSeed const& h1, HelixSeed const& h2) {
  /*PhiZSeedFinder::HelixComp PhiZSeedFinder::compareHelices(HelixSeed const& h1, HelixSeed const& h2) {
@@ -1427,7 +1876,7 @@ std::cout << std::left
   void PhiZSeedFinder::ev5_select_best_segments_step_01(const std::vector<std::vector<ev5_HitsInNthStation>>& segment_candidates, const std::vector<std::vector<ev5_Segment>>& diag_segment_candidates, std::vector<std::vector<ev5_HitsInNthStation>>& ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& ThisIsBestSegment_Diag, int nCH, double threshold_deltaphi){
     //std::cout << "-----------------------------------" << std::endl;
     //std::cout << "-----------------------------------" << std::endl;
-    //std::cout << " ev5_select_best_segments_step_01     " << std::endl;
+    std::cout << " ev5_select_best_segments_step_01     " << std::endl;
     //std::cout << "-----------------------------------" << std::endl;
     //std::cout << "-----------------------------------" << std::endl;
     //-----------------------------------------------------------------
@@ -1532,6 +1981,53 @@ std::cout << std::left
         ThisIsBestSegment_Diag.at(index).at(j).chiNDF = ChiNDF;
       }
     }//end nSegmentInTriplet
+
+// Make sure to include this at the top of your file
+// #include <format>
+// #include <iostream>
+if (_debugLevel) {
+    // --- 1. Print Total Collection Size ---
+    std::cout << "\n" << std::string(180, '=') << "\n";
+    std::cout << std::format(" TOTAL: {} Segments found.\n", ThisIsBestSegment.size());
+    std::cout << std::string(180, '=') << "\n";
+
+    // --- 2. Loop over each Segment ---
+    for (size_t i = 0; i < ThisIsBestSegment.size(); ++i) {
+
+        // --- A. Print Summary for THIS Segment ---
+        std::cout << "\n" << std::string(180, '=') << "\n";
+        std::cout << std::format(" Segment Index: {} | Number of Hits: {}\n", i, ThisIsBestSegment[i].size());
+        std::cout << std::string(180, '=') << "\n";
+
+        // --- B. Print Table Header ---
+        // Using {:<N} for Left Align, width N
+        std::cout << std::format(
+            "{:<8} {:<8} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} "
+            "{:<12} {:<12} {:<12} {:<12} {:<12} {:<12} {:<12} {:<12}\n",
+            "#Seg", "Hit#", "HitInd", "HitID", "Stn", "Pln", "Fce", "Pnl", "SegIdx", "Used", "nTurn", "Straws",
+            "X", "Y", "Z", "Phi", "PhiDiag", "HelixPhi", "CircErr2", "HPhiErr2"
+        );
+        std::cout << std::string(180, '-') << "\n";
+
+        // --- C. Loop over Hits in this Segment ---
+        for (size_t j = 0; j < ThisIsBestSegment[i].size(); ++j) {
+            const auto& h = ThisIsBestSegment[i][j];
+
+            // .2f = 2 decimal places, .3f = 3 decimal places
+            std::cout << std::format(
+                "{:<8} {:<8} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10} "
+                "{:<12.2f} {:<12.2f} {:<12.2f} {:<12.3f} {:<12.3f} {:<12.3f} {:<12.3f} {:<12.3f}\n",
+                i, j,
+                h.hitIndice, h.hitID, h.station, h.plane, h.face, h.panel,
+                h.segmentIndex, h.used, h.nturn, h.strawhits,
+                h.x, h.y, h.z, h.phi, h.phiDiag, h.helixPhi, h.circleError2, h.helixPhiError2
+            );
+        }
+    }
+    // Final closing line
+    std::cout << std::string(180, '-') << "\n";
+}
+
   }//end ev5_select_best_segments_step_01
 //-----------------------------------------------------------------------------
   void PhiZSeedFinder::ev5_select_best_segments_step_02(int station, std::vector<std::vector<ev5_HitsInNthStation>>& ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& ThisIsBestSegment_Diag, int nCH, double threshold_deltaphi){
@@ -1539,116 +2035,243 @@ std::cout << std::left
       std::vector<std::vector<ev5_Segment>> diag_segments = ThisIsBestSegment_Diag;
       //std::cout << "-----------------------------------" << std::endl;
       //std::cout << "-----------------------------------" << std::endl;
-      //std::cout << " ev5_select_best_segments_step_02  " << std::endl;
+      std::cout << " ev5_select_best_segments_step_02  " << std::endl;
       //std::cout << "-----------------------------------" << std::endl;
       //std::cout << "-----------------------------------" << std::endl;
+      std::cout<<"station = "<<station<<std::endl;
       //---------------------------------------------------------------------------------------------
       // Search remaining ComboHit candidates in 3 consecutive stations
       //---------------------------------------------------------------------------------------------
-      //obtain the minimum station in the segment
       int max_station = station;
-      //std::cout << "min_station = " <<min_station<< std::endl;
-      //Segment candidates
       std::vector<std::vector<ev5_HitsInNthStation>> new_segments;
-      new_segments.clear();
       std::vector<std::vector<ev5_Segment>>  new_diag_segments;
+      new_segments.clear();
       new_diag_segments.clear();
-      //Take segment
-      for(int i=0; i<(int)segments.size(); i++){
-        //Fill all hit info of "i-th" segment
+
+      // Take segment
+      for(int i = 0; i < (int)segments.size(); i++){
         std::vector<ev5_HitsInNthStation> hit_candidates;
         std::vector<ev5_Segment> hit_diag_candidates;
-        hit_candidates.clear();
-        hit_diag_candidates.clear();
-        for(int j=0; j<(int)segments.at(i).size(); j++){
+
+        for(int j = 0; j < (int)segments.at(i).size(); j++){
           hit_candidates.push_back(segments.at(i).at(j));
           hit_diag_candidates.push_back(diag_segments.at(i).at(j));
         }
-        double slope_alpha = hit_diag_candidates.at(0).alpha;//Slope (a)
-        double slope_beta = hit_diag_candidates.at(0).beta;//Intercept (b)
-        //std::cout<<"slope_alpha/beta = "<<slope_alpha<<"/"<<slope_beta<<std::endl;
-        // Take remaining ComboHits in 3 consecutive stations
-        for(int k=max_station; k>=max_station-2; k--){
-        std::vector<ev5_HitsInNthStation> Hits_In_Station;
-        Hits_In_Station.clear();
-        for(int j=0; j<(int)_HitsInCluster.size(); j++){
-            ev5_HitsInNthStation hitsin_nthstation;
-            hitsin_nthstation.hitIndice    = _HitsInCluster.at(j).hitIndice;
-            hitsin_nthstation.phi          = _HitsInCluster.at(j).phi;
-            hitsin_nthstation.strawhits    = _HitsInCluster.at(j).strawhits;
-            hitsin_nthstation.x            = _HitsInCluster.at(j).x;
-            hitsin_nthstation.y            = _HitsInCluster.at(j).y;
-            hitsin_nthstation.z            = _HitsInCluster.at(j).z;
-            hitsin_nthstation.station      = _HitsInCluster.at(j).station;
-            hitsin_nthstation.plane        = _HitsInCluster.at(j).plane;
-            hitsin_nthstation.face        = _HitsInCluster.at(j).face;
-            hitsin_nthstation.panel        = _HitsInCluster.at(j).panel;
-            hitsin_nthstation.hitID        = _HitsInCluster.at(j).hitID;
-            if(_HitsInCluster.at(j).used == true) continue;
-            if(k != _HitsInCluster.at(j).station) continue;
-            int flag_alreadyUsed = 0;
-            for (const auto &element : hit_candidates) {
-              if(element.hitID == _HitsInCluster.at(j).hitID) flag_alreadyUsed = 1;
-            }
-            if(flag_alreadyUsed == 1) continue;
-            Hits_In_Station.push_back(hitsin_nthstation);
+
+        // ========================================================
+        // DEBUG PRINTOUT: Print Segment and Hit Info
+        // ========================================================
+        std::cout << "\n========================================================================\n";
+        std::cout << " [DEBUG] PROCESSING SEGMENT INDEX: " << i << "\n";
+        std::cout << " Total Hits in this Segment: " << hit_candidates.size() << "\n";
+        std::cout << "------------------------------------------------------------------------\n";
+        std::cout << std::left
+                  << std::setw(10) << "HitIdx"
+                  << std::setw(10) << "Station"
+                  << std::setw(12) << "X [mm]"
+                  << std::setw(12) << "Y [mm]"
+                  << std::setw(12) << "Z [mm]"
+                  << std::setw(12) << "Phi [rad]" << "\n";
+        std::cout << "------------------------------------------------------------------------\n";
+
+        for (const auto& h : hit_candidates) {
+            double phi = std::atan2(h.y, h.x); // Calculate phi for the printout
+            std::cout << std::left
+                      << std::setw(10) << h.hitIndice
+                      << std::setw(10) << h.station
+                      << std::setw(12) << std::fixed << std::setprecision(3) << h.x
+                      << std::setw(12) << std::fixed << std::setprecision(3) << h.y
+                      << std::setw(12) << std::fixed << std::setprecision(3) << h.z
+                      << std::setw(12) << std::fixed << std::setprecision(4) << phi << "\n";
         }
-        size_t nCHsInStn_1 = Hits_In_Station.size();
-        if(!((int)nCHsInStn_1 >= 1)) break;//at leat 1 ComboHits
-          /*for(size_t p=0; p<Hits_In_Station.size(); p++){
-            std::cout<<"phi/nStrawHits/station/plane/face/panel/x/y/z = "<<Hits_In_Station.at(p).phi<<"/"<<Hits_In_Station.at(p).strawhits<<"/"<<Hits_In_Station.at(p).station<<"/"<<Hits_In_Station.at(p).plane<<"/"<<Hits_In_Station.at(p).face<<"/"<<Hits_In_Station.at(p).panel<<"/"<<Hits_In_Station.at(p).x<<"/"<<Hits_In_Station.at(p).y<<"/"<<Hits_In_Station.at(p).z<<std::endl;
-          }*/
-            // reference point: deltaphi = 0, first_Hit[4] = {x, y, z, phi}
-            double first_Hit[4] = {9999.9, 9999.9, 9999.9, 9999.9};
-            double reference_phi = -999.9;
-            for(int p=0;p<(int)hit_diag_candidates.size(); p++){
-              if(hit_diag_candidates.at(p).reference_point == 1){
-                first_Hit[0] = hit_candidates[p].x;
-                first_Hit[1] = hit_candidates[p].y;
-                first_Hit[2] = hit_candidates[p].z;
-                first_Hit[3] = hit_candidates[p].phi;
-              }
-              reference_phi = hit_diag_candidates[p].deltaphi;
-            }
-            //if(first_Hit[0] > 9999. or first_Hit[2] > 9999. or first_Hit[2] > 9999. or first_Hit[3] > 9999.) std::cout<<"first_Hit_wrong_check_please"<<std::endl;
-            //Check hits in "n-th" station, if they configure the segment
-            //For "n-th" station
-            //std::cout<<" station = "<<k<<std::endl;
-            double phi[2] = {reference_phi, 0.0};
-            for(int l=0; l<(int)nCHsInStn_1; l++){
-              double middle_Hit[3] = {Hits_In_Station.at(l).x, Hits_In_Station.at(l).y, Hits_In_Station.at(l).z};
-              double DeltaPhi = ev5_DeltaPhi(first_Hit[0], first_Hit[1], middle_Hit[0], middle_Hit[1]);
-              double sign = ev5_ParticleDirection(first_Hit[0], first_Hit[1], middle_Hit[0], middle_Hit[1] );
-              //std::cout<<"DeltaPhi between 1st ST/3rd ST= "<<DeltaPhi<<std::endl;
-              //std::cout<<"particle has positive/negative track = "<<sign<<std::endl;
-              //std::cout<<"Phi 1 = "<<DeltaPhi<<std::endl;
-              phi[1] = sign*DeltaPhi;
-              ev5_Segment hit1;
-              hit1.deltaphi = phi[1];
-              hit1.z = Hits_In_Station.at(l).z;
-              hit1.alpha = slope_alpha;
-              hit1.station = Hits_In_Station.at(l).station;
-              hit1.usedforfit = false;
-              //std::cout<<"Phi/z = "<<phi[1]<<"/"<<middle_Hit[2]<<std::endl;
-              double residual_phi = ev5_ResidualDeltaPhi(slope_alpha, slope_beta, first_Hit[2], phi[0], middle_Hit[2], phi[1]);
-              //std::cout<<"1 residual_phi = "<<residual_phi<<std::endl;
-              if(residual_phi < threshold_deltaphi){
-                hit_candidates.push_back(Hits_In_Station.at(l));
-                hit_diag_candidates.push_back(hit1);
-              }
-            }
-        }//end loop on station
+        std::cout << "========================================================================\n";
+
+        // ========================================================
+        // 1. Sort hit_candidates and hit_diag_candidates by Z (Descending: max Z to min Z)
+        // ========================================================
+        std::vector<int> idx(hit_candidates.size());
+        std::iota(idx.begin(), idx.end(), 0); // Fill with 0, 1, 2...
+        std::sort(idx.begin(), idx.end(), [&](int a, int b) {
+            return hit_candidates[a].z > hit_candidates[b].z;
+        });
+
+        std::vector<ev5_HitsInNthStation> sorted_hits;
+        std::vector<ev5_Segment> sorted_diags;
+        for (int index : idx) {
+            sorted_hits.push_back(hit_candidates[index]);
+            sorted_diags.push_back(hit_diag_candidates[index]);
+        }
+        hit_candidates = sorted_hits;
+        hit_diag_candidates = sorted_diags;
+
+        // ========================================================
+        // 2. Setup Reference Hit & Calculate Linear Fit (Phi vs Z)
+        // ========================================================
+        size_t refIdx = 0; // After sorting, 0 is the max Z
+        int reference_indice = hit_candidates[refIdx].hitIndice; // <--- ADD THIS LINE
+        double refZ   = hit_candidates[refIdx].z;
+        double refPhi = std::atan2(hit_candidates[refIdx].y, hit_candidates[refIdx].x);
+        double defaultWeight = 1.0 / 0.01; // From your previous snippet
+
+        // Clear the fitter for this new segment
+        _lineFitter.clear();
+
+        for (auto& h : hit_candidates) {
+            double raw_phi = std::atan2(h.y, h.x);
+
+            // Calculate absolute shortest delta phi to avoid +/- Pi wrap-around
+            double dPhi = raw_phi - refPhi;
+            while (dPhi > M_PI)  dPhi -= 2.0 * M_PI;
+            while (dPhi < -M_PI) dPhi += 2.0 * M_PI;
+
+            // This creates a smooth continuous Phi value for the linear fit
+            double unwrapped_phi = refPhi + dPhi;
+
+            // Add the point to your LineFitter (X = Z, Y = unwrapped_phi)
+            // Note: Adjust the method name "addPoint" if your class uses something else!
+            _lineFitter.addPoint(h.z, unwrapped_phi, defaultWeight);
+        }
+
+        // Execute the fit (if your class requires an explicit fit command)
+        // _lineFitter.fit();
+
+        // Extract the parameters from the fitter
+        // Note: Adjust "slope()" and "intercept()" to match your class methods
+        double lineSlope     = _lineFitter.dydx(); // The Slope (dphi/dz)
+        double lineIntercept = _lineFitter.y0();   // The Intercept (phi at z=0)
+
+        if (_debugLevel > 0) {
+            std::cout << "\n[DEBUG] --- Segment " << i << " _lineFitter Results ---\n";
+            std::cout << "Ref Hit Z: " << refZ << " | Ref Phi: " << refPhi << "\n";
+            std::cout << "Slope (dPhi/dZ): " << lineSlope << " | Intercept: " << lineIntercept << "\n";
+        }
+
+
+
+        // ========================================================
+        // 3. Scan remaining ComboHits to see if they fit the slope
+        // ========================================================
+        for(int k = max_station; k >= max_station - 2; k--) {
+            std::vector<ev5_HitsInNthStation> Hits_In_Station;
+
+            for(int j = 0; j < (int)_HitsInCluster.size(); j++) {
+                if(_HitsInCluster.at(j).used == true) continue;
+                if(k != _HitsInCluster.at(j).station) continue;
+
+                // Check if already in hit_candidates
+                bool flag_alreadyUsed = false;
+                for (const auto &element : hit_candidates) {
+                  if(element.hitID == _HitsInCluster.at(j).hitID) {
+                      flag_alreadyUsed = true;
+                      break;
+                  }
+                }
+                if(flag_alreadyUsed) continue;
+
+                // Grab coordinates
+                double x = _HitsInCluster.at(j).x;
+                double y = _HitsInCluster.at(j).y;
+                double z = _HitsInCluster.at(j).z;
+
+                double raw_phi = std::atan2(y, x);
+                double predictedPhi = lineSlope * z + lineIntercept;
+
+                // Residual distance: Actual Phi - Predicted Phi
+                double residual_phi = raw_phi - predictedPhi;
+
+                // CRITICAL: Handle the +/- Pi wrap boundary for the residual!
+                while (residual_phi > M_PI)  residual_phi -= 2.0 * M_PI;
+                while (residual_phi < -M_PI) residual_phi += 2.0 * M_PI;
+
+                if (_debugLevel > 0) {
+                    std::cout << "  -> Testing HitID " << _HitsInCluster.at(j).hitID
+                              << " at Z: " << z
+                              << " | RawPhi: " << raw_phi
+                              << " | PredPhi: " << predictedPhi
+                              << " | Residual: " << std::abs(residual_phi) << "\n";
+                }
+
+                // If within threshold, accept it!
+                if(std::abs(residual_phi) < threshold_deltaphi) {
+
+                    // 1. Create and push the standard hit
+                    ev5_HitsInNthStation new_hit = _HitsInCluster.at(j);
+                    hit_candidates.push_back(new_hit);
+
+                    // 2. Create and push the diagnostic hit using your exact struct
+                    ev5_Segment new_diag;
+                    new_diag.deltaphi   = residual_phi;       // The delta phi we just calculated
+                    new_diag.z          = new_hit.z;          // Z coordinate
+                    new_diag.station    = new_hit.station;    // Station number
+
+                    // Fill in the rest of the struct with the fit info
+                    new_diag.alpha      = lineSlope;          // The slope we used
+                    new_diag.beta       = lineIntercept;      // The intercept we used
+                    new_diag.chiNDF     = 0.0;                // Default/placeholder
+                    new_diag.reference_point = reference_indice; // From your reference hit
+                    new_diag.usedforfit = false;              // Set to false since it was added AFTER the fit
+
+                    hit_diag_candidates.push_back(new_diag);
+
+                    if (_debugLevel > 0) {
+                        std::cout << "     *** HIT ACCEPTED! ***\n";
+                    }
+                }
+            } // end loop on cluster hits
+        } // end loop on stations
+
         new_segments.push_back(hit_candidates);
         new_diag_segments.push_back(hit_diag_candidates);
-      }//end loop on segment
-    //Re-Fill
-    ThisIsBestSegment.clear();
-    ThisIsBestSegment_Diag.clear();
-    ThisIsBestSegment = new_segments;
-    ThisIsBestSegment_Diag = new_diag_segments;
+
+      } // end loop on segment
+
+      // Re-Fill
+      ThisIsBestSegment.clear();
+      ThisIsBestSegment_Diag.clear();
+      ThisIsBestSegment = new_segments;
+      ThisIsBestSegment_Diag = new_diag_segments;
+        // ========================================================
+        // DEBUG PRINTOUT: Print hits inside ThisIsBestSegment
+        // ========================================================
+        std::cout << "end ev5_select_best_segments_step_02\n";
+        std::cout << "\n========================================================================\n";
+        std::cout << " [DEBUG] HITS IN ThisIsBestSegment (Station: " << station << ")\n";
+        std::cout << " Total Segments: " << ThisIsBestSegment.size() << "\n";
+        std::cout << "------------------------------------------------------------------------\n";
+        std::cout << std::left
+                  << std::setw(10) << "SegIdx"
+                  << std::setw(10) << "HitIdx"
+                  << std::setw(10) << "Station"
+                  << std::setw(12) << "X [mm]"
+                  << std::setw(12) << "Y [mm]"
+                  << std::setw(12) << "Z [mm]"
+                  << std::setw(12) << "Phi [rad]" << "\n";
+        std::cout << "------------------------------------------------------------------------\n";
+
+        // Outer loop: iterate through each segment
+        for (size_t seg_idx = 0; seg_idx < ThisIsBestSegment.size(); ++seg_idx) {
+            // Inner loop: iterate through the hits within this specific segment
+            for (const auto& h : ThisIsBestSegment[seg_idx]) {
+                double phi = std::atan2(h.y, h.x); // Calculate phi for the printout
+                std::cout << std::left
+                          << std::setw(10) << seg_idx
+                          << std::setw(10) << h.hitIndice
+                          << std::setw(10) << h.station
+                          << std::setw(12) << std::fixed << std::setprecision(3) << h.x
+                          << std::setw(12) << std::fixed << std::setprecision(3) << h.y
+                          << std::setw(12) << std::fixed << std::setprecision(3) << h.z
+                          << std::setw(12) << std::fixed << std::setprecision(4) << phi << "\n";
+            }
+        }
+        std::cout << "========================================================================\n";
   }//end ev5_select_best_segments_step_02
 //--------------------------------------------------------------------------------//
 void PhiZSeedFinder::ev5_select_best_segments_step_03(std::vector<std::vector<ev5_HitsInNthStation>> &ThisIsBestSegment, std::vector<std::vector<ev5_Segment>> &ThisIsBestSegment_Diag, int station, int nCH, double threshold_deltaphi){
+
+    std::cout<<"================================"<<std::endl;
+    std::cout<<"ev5_select_best_segments_step_03"<<std::endl;
+    std::cout<<"================================"<<std::endl;
+      std::cout<<"station = "<<station<<std::endl;
     // ------------------------------------------------------------
     // Make local copies of the current "best" segments
     // ------------------------------------------------------------
@@ -1696,6 +2319,35 @@ for (auto &seg : diag_segments) {
           new_diag_segment.push_back(hit_diag_candidates);
           continue;
         }
+        // ========================================================
+        // DEBUG PRINTOUT: Print Segment and Hit Info
+        // ========================================================
+        std::cout << "\n========================================================================\n";
+        std::cout << " [DEBUG] PROCESSING SEGMENT INDEX: " << i << "\n";
+        std::cout << " Total Hits in this Segment: " << hit_candidates.size() << "\n";
+        std::cout << "------------------------------------------------------------------------\n";
+        std::cout << std::left
+                  << std::setw(10) << "HitIdx"
+                  << std::setw(10) << "Station"
+                  << std::setw(12) << "X [mm]"
+                  << std::setw(12) << "Y [mm]"
+                  << std::setw(12) << "Z [mm]"
+                  << std::setw(12) << "Phi [rad]" << "\n";
+        std::cout << "------------------------------------------------------------------------\n";
+
+        for (const auto& h : hit_candidates) {
+            double phi = std::atan2(h.y, h.x); // Calculate phi for the printout
+            std::cout << std::left
+                      << std::setw(10) << h.hitIndice
+                      << std::setw(10) << h.station
+                      << std::setw(12) << std::fixed << std::setprecision(3) << h.x
+                      << std::setw(12) << std::fixed << std::setprecision(3) << h.y
+                      << std::setw(12) << std::fixed << std::setprecision(3) << h.z
+                      << std::setw(12) << std::fixed << std::setprecision(4) << phi << "\n";
+        }
+        std::cout << "========================================================================\n";
+        // ========================================================
+
         // --------------------------------------------------------
         // Step 2: Fit slope using current diagnostics
         // --------------------------------------------------------
@@ -1776,6 +2428,7 @@ std::cout << "slope_alpha/beta = "
             // normalize into [-pi, pi]
             if (dphi > M_PI)  dphi -= 2*M_PI;
             if (dphi < -M_PI) dphi += 2*M_PI;
+            //std::cout << std::fixed << std::setprecision(2);
             std::cout << " dphi (relative to ref)=" << dphi << "\n";
         ev5_Segment hit;
         hit.deltaphi = dphi;
@@ -1816,7 +2469,7 @@ for (const auto &h : Hits_In_Station) {
               << ", phi = " << h.phi
               << "\n";
 }
-    std::cout << std::fixed << std::setprecision(10);
+    //std::cout << std::fixed << std::setprecision(10);
 std::cout << "slope_alpha/beta = "
           << slope_alpha << " / " << slope_beta
           << std::endl;
@@ -1829,6 +2482,7 @@ std::cout << "slope_alpha/beta = "
             // normalize into [-pi, pi]
             if (dphi > M_PI)  dphi -= 2*M_PI;
             if (dphi < -M_PI) dphi += 2*M_PI;
+            //std::cout << std::fixed << std::setprecision(2);
             std::cout << " dphi (relative to ref)=" << dphi << "\n";
         ev5_Segment hit;
         hit.deltaphi = dphi;
@@ -2235,83 +2889,225 @@ void PhiZSeedFinder::ev5_select_best_segments_step_030(std::vector<std::vector<e
 void PhiZSeedFinder::ev5_select_best_segments_step_06A(std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag){
       std::vector<std::vector<ev5_HitsInNthStation>> segments = all_ThisIsBestSegment;
       std::vector<std::vector<ev5_Segment>> diag_segments = all_ThisIsBestSegment_Diag;
-    std::cout << "-----------------------------------" << std::endl;
-    std::cout << " ev5_select_best_segments_step_06A " << std::endl;
-    std::cout << "-----------------------------------" << std::endl;
-// ---------------------------------------------------------------------
-// Step 1: Build a mapping from "hit index" -> "which segments contain it"
-// ---------------------------------------------------------------------
-std::unordered_map<int, std::set<int>> hitToSegments;
-std::cout << "Step 1: Building hit -> segment mapping\n";
-for (size_t i = 0; i < segments.size(); ++i) {
-    std::cout << " Segment " << i << " contains hits: ";
-    for (auto& h : segments[i]) {
-        std::cout << h.hitIndice << " ";
-        hitToSegments[h.hitIndice].insert(i);
+
+      if (_debugLevel) {
+        std::cout << "--------------------------------------------------------------------------------\n";
+        std::cout << " ev5_select_best_segments_step_06A (Resolve Shared Hits)\n";
+        std::cout << "--------------------------------------------------------------------------------\n";
     }
-    std::cout << "\n";
-}
-std::cout << "Hit -> segment map:\n";
-for (auto& kv : hitToSegments) {
-    std::cout << " Hit " << kv.first << " in segments: ";
-    for (int segIdx : kv.second) std::cout << segIdx << " ";
-    std::cout << "\n";
-}
-// ---------------------------------------------------------------------
-// Step 2: For each shared hit, decide ownership
-// ---------------------------------------------------------------------
-for (auto& kv : hitToSegments) {
-    if (kv.second.size() < 2) continue;  // skip non-shared hits
-    int hitIdx = kv.first;
-    auto& segSet = kv.second;
-    std::cout << "\nResolving shared hit " << hitIdx << " present in segments: ";
-    for (int segIdx : segSet) std::cout << segIdx << " ";
-    std::cout << "\n";
-    double bestChi2Diff = -1e12; // start very negative
-    int bestSeg = -1;
-    for (int segIdx : segSet) {
-        auto& seg = segments[segIdx];
-        // --- find the hit inside this segment ---
-        auto it = std::find_if(seg.begin(), seg.end(),
-                               [&](auto& h){ return h.hitIndice == hitIdx; });
-        if (it == seg.end()) continue;
-        auto backupHit = *it;
-        // --- compute chi2 WITH hit ---
-        double chi2ndf_with = 0.0;
-        findchisq(seg, chi2ndf_with);
-        // --- temporarily remove the hit ---
-        seg.erase(it);
-        // --- compute chi2 WITHOUT hit ---
-        double chi2ndf_without = 0.0;
-        findchisq(seg, chi2ndf_without);
-        // --- restore hit ---
-        seg.push_back(backupHit);
-        double chi2diff = chi2ndf_without - chi2ndf_with;
-        std::cout << "  Segment " << segIdx
-                  << " chi2/ndf WITH hit=" << chi2ndf_with
-                  << ", WITHOUT hit=" << chi2ndf_without
-                  << ", diff=" << chi2diff << "\n";
-        if (chi2diff > bestChi2Diff) {
-            bestChi2Diff = chi2diff;
-            bestSeg = segIdx;
+
+    // =====================================================================
+    // DEFINITIONS
+    // =====================================================================
+    const double CHI2_NDF_CUT = 5.0;  // User suggested ~5.0
+    const double RATIO_CUT    = 3.0;  // The best match must be 3x closer to win exclusive rights
+
+    // ---------------------------------------------------------------------
+    // Step 1: Build a mapping from "hit index" -> "which segments contain it"
+    // ---------------------------------------------------------------------
+    std::unordered_map<int, std::set<int>> hitToSegments;
+
+    if (_debugLevel) std::cout << "\n[SharedHit] --- ALL SEGMENTS AND HITS ---\n";
+
+    for (size_t i = 0; i < segments.size(); ++i) {
+        if (_debugLevel) {
+            std::cout << std::format("\nSegment {} contains {} hits:\n", i, segments[i].size());
+            // Print the header row just once per segment
+            std::cout << "  Index | X        | Y        | Z         | Phi\n";
+            std::cout << "  --------------------------------------------------\n";
+        }
+
+        for (auto& h : segments[i]) {
+            hitToSegments[h.hitIndice].insert(i);
+
+            // Print only the values, aligned to match the header
+            if (_debugLevel) {
+                std::cout << std::format("  {:<5} | {:<8.2f} | {:<8.2f} | {:<9.2f} | {:.3f}\n",
+                                         h.hitIndice, h.x, h.y, h.z, h.phi);
+            }
         }
     }
-    std::cout << " Best segment for hit " << hitIdx << " is segment " << bestSeg
-              << " (max chi2 improvement = " << bestChi2Diff << ")\n";
-    // ------------------------------------------------------------------
-    // Step 3: Remove the hit from all non-best segments
-    // ------------------------------------------------------------------
+
+    // --- Print Summary of Shared Hits ---
+    if (_debugLevel) {
+        std::cout << "\n[SharedHit] --- SHARED HITS SUMMARY ---\n";
+
+        // Table header for shared hits
+        std::cout << "  Index | Segments      | X        | Y        | Z         | Phi\n";
+        std::cout << "  -----------------------------------------------------------------------\n";
+
+        bool foundShared = false;
+
+        for (const auto& kv : hitToSegments) {
+            if (kv.second.size() > 1) {
+                foundShared = true;
+                int hitIdx = kv.first;
+
+                // Group the segment indices into a single string to fit nicely in the column
+                std::string segList;
+                for (int segIdx : kv.second) {
+                    segList += std::to_string(segIdx) + " ";
+                }
+
+                // Grab coordinates from the first segment that owns this hit
+                int firstSegIdx = *kv.second.begin();
+                auto it = std::find_if(segments[firstSegIdx].begin(), segments[firstSegIdx].end(),
+                                       [&](const auto& h){ return h.hitIndice == hitIdx; });
+
+                if (it != segments[firstSegIdx].end()) {
+                    // Print the tabular row
+                    std::cout << std::format("  {:<5} | {:<13} | {:<8.2f} | {:<8.2f} | {:<9.2f} | {:.3f}\n",
+                                             hitIdx, segList, it->x, it->y, it->z, it->phi);
+                }
+            }
+        }
+        if (!foundShared) {
+            std::cout << "  No shared hits found in this event.\n";
+        }
+        std::cout << "--------------------------------------------------------------------------------\n";
+    }
+
+// ---------------------------------------------------------------------
+// Step 2: Resolve Shared Hits (Corrected)
+// ---------------------------------------------------------------------
+for (auto& kv : hitToSegments) {
+    // kv.first is the HitIndex
+    // kv.second is the Set of Segment Indices containing this hit
+    if (kv.second.size() < 2) continue; // If hit is unique (not shared), skip.
+
+    int hitIdx = kv.first;
+    std::set<int>& segSet = kv.second;
+
+    struct SegCandidate {
+        int segIdx;
+        double chi2ndf;
+        double distance; // Geometric distance (residual)
+    };
+    std::vector<SegCandidate> goodCandidates;
+
+    // Print the header for this specific hit's evaluation
+    if (_debugLevel) {
+      std::cout << std::format("\n  Evaluating Hit {} shared by {} segments:\n", hitIdx, segSet.size());
+      std::cout << "  Seg | Chi2/NDF | Alpha    | Beta     | Hit Phi | Pred Phi | Resid (rad)\n";
+      std::cout << "  ---------------------------------------------------------------------------\n";
+    }
+
+    // --- SUB-STEP A: Check Chi2/NDF Quality ---
     for (int segIdx : segSet) {
-        if (segIdx == bestSeg) continue;
         auto& seg = segments[segIdx];
-        auto& diag = diag_segments[segIdx];
-        seg.erase(std::remove_if(seg.begin(), seg.end(),
-                                 [&](auto& h){ return h.hitIndice == hitIdx; }),
-                  seg.end());
-        diag.erase(std::remove_if(diag.begin(), diag.end(),
-                                  [&](auto& d){ return d.reference_point == hitIdx; }),
-                   diag.end());
-        std::cout << " Removed hit " << hitIdx << " from segment " << segIdx << "\n";
+
+        // 1. Run the fit on this segment
+        findchisq_ver2(seg);
+
+        // 2. Retrieve values directly from the fitter class
+        double this_chi2 = _lineFitter.chi2Dof();
+        double alpha     = _lineFitter.dydx(); // The Slope (dphi/dz)
+        double beta      = _lineFitter.y0();   // The Intercept (phi at z=0)
+
+        // 3. Threshold Check
+        // If the segment is "bad" (chi2 > 5), we ignore it as a candidate for this hit.
+        if (this_chi2 < CHI2_NDF_CUT) {
+
+            // 4. Calculate the distance (residual) of THIS hit from the line
+            // We need to find the specific hit object to get its Z and Phi coordinates
+            auto it = std::find_if(seg.begin(), seg.end(),
+                                   [&](auto& h){ return h.hitIndice == hitIdx; });
+
+            if (it != seg.end()) {
+                double hitZ   = it->z;
+                double hitPhi = it->phi;
+
+                // Mathematical Distance: | Measured - Predicted |
+                // Predicted Phi = alpha * Z + beta
+                double prediction = alpha * hitZ + beta;
+                double residual   = std::abs(hitPhi - prediction);
+
+                // Store this segment as a valid candidate
+                goodCandidates.push_back({segIdx, this_chi2, residual});
+            }
+        }
+    }
+
+    // --- SUB-STEP B: Decision Making ---
+
+    // Case 1: All segments failed the Chi2 check (All are > 5.0)
+    if (goodCandidates.empty()) {
+        std::cout << "Hit " << hitIdx << ": All sharing segments have poor Chi2. Removing from ALL.\n";
+        // Remove this hit from *every* segment in the original set
+        for (int segIdx : segSet) {
+            auto& seg = segments[segIdx];
+            auto& diag = diag_segments[segIdx];
+            // Remove hit from hits vector
+            seg.erase(std::remove_if(seg.begin(), seg.end(),
+                [&](auto& h){ return h.hitIndice == hitIdx; }), seg.end());
+            // Remove hit metadata from diag vector (if aligned)
+            // Note: Adjust criteria if diag stores differently
+             diag.erase(std::remove_if(diag.begin(), diag.end(),
+                [&](auto& d){ return d.reference_point == hitIdx; }), diag.end());
+        }
+        continue; // Done with this hit
+    }
+
+    // Case 2: We have at least one good segment. Let's compare distances.
+    // Sort candidates by distance (closest/smallest residual first)
+    std::sort(goodCandidates.begin(), goodCandidates.end(),
+        [](const SegCandidate& a, const SegCandidate& b) {
+            return a.distance < b.distance;
+        });
+
+    int bestSegIdx = goodCandidates[0].segIdx;
+    double bestDist = goodCandidates[0].distance;
+
+    // Determine if we should be Exclusive or Inclusive (Shared)
+    bool makeExclusive = false;
+
+    if (goodCandidates.size() > 1) {
+        double secondBestDist = goodCandidates[1].distance;
+
+        // Ratio Check: Is the best one significantly better?
+        // e.g. if Best=1.0 and Second=1.5 (Ratio 1.5), Keep Shared.
+        //      if Best=1.0 and Second=5.0 (Ratio 5.0), Give to Best.
+        if (secondBestDist > (RATIO_CUT * bestDist)) {
+            makeExclusive = true;
+            std::cout << "Hit " << hitIdx << ": Winner found (Ratio " << secondBestDist/bestDist << " > " << RATIO_CUT << "). Assigned to Seg " << bestSegIdx << "\n";
+        } else {
+            std::cout << "Hit " << hitIdx << ": Ambiguous (Ratio " << secondBestDist/bestDist << "). Keeping shared among good segments.\n";
+        }
+    } else {
+        // Only one segment passed the Chi2 cut, so it wins by default
+        makeExclusive = true;
+        std::cout << "Hit " << hitIdx << ": Only one valid segment (Seg " << bestSegIdx << "). Assigned exclusively.\n";
+    }
+
+    // --- SUB-STEP C: Execute Removal ---
+
+    // We iterate over the ORIGINAL set of segments that claimed this hit
+    for (int segIdx : segSet) {
+        bool keepHit = false;
+
+        if (makeExclusive) {
+            // If exclusive, keep ONLY in the best segment
+            if (segIdx == bestSegIdx) keepHit = true;
+        } else {
+            // If shared/ambiguous, keep in ANY segment that passed the Chi2 cut
+            for (const auto& cand : goodCandidates) {
+                if (cand.segIdx == segIdx) {
+                    keepHit = true;
+                    break;
+                }
+            }
+        }
+
+        if (!keepHit) {
+            // Remove the hit from this segment
+            auto& seg = segments[segIdx];
+            auto& diag = diag_segments[segIdx];
+            seg.erase(std::remove_if(seg.begin(), seg.end(),
+                [&](auto& h){ return h.hitIndice == hitIdx; }), seg.end());
+            // Adjust diag removal logic as per your struct details
+             diag.erase(std::remove_if(diag.begin(), diag.end(),
+                [&](auto& d){ return d.reference_point == hitIdx; }), diag.end());
+        }
     }
 }
 /*
@@ -2454,7 +3250,8 @@ for (std::unordered_map<int, std::set<int>>::iterator kv = hitToSegments.begin()
     all_ThisIsBestSegment_Diag = diag_segments;
     std::cout<<"ThisIsBestSegment = "<<all_ThisIsBestSegment.size()<<std::endl;
     std::cout<<"ThisIsBestSegment_Diag = "<<all_ThisIsBestSegment_Diag.size()<<std::endl;
-  }//end ev5_select_best_segments_step_030
+  }//end ev5_select_best_segments_step_06A
+
 //--------------------------------------------------------------------------------//
   void PhiZSeedFinder::ev5_select_best_segments_step_031(std::vector<std::vector<ev5_HitsInNthStation>>& ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& ThisIsBestSegment_Diag, int nCH, double threshold_deltaphi){
       std::vector<std::vector<ev5_HitsInNthStation>> segments = ThisIsBestSegment;
@@ -2957,164 +3754,702 @@ for (std::unordered_map<int, std::set<int>>::iterator kv = hitToSegments.begin()
       chindf = _lineFitter.chi2Dof();
   }
 //--------------------------------------------------------------------------------//
-    void PhiZSeedFinder::ev5_fit_slope_ver4(int index, double& alpha, double& alphaError, double& beta, double& betaError, double& chindf){
-    std::cout<<"ev5_fit_slope_ver4_start"<<std::endl;
-    std::cout<<"_segmentHits.at("<<index<<").size = "<<_segmentHits.at(index).size()<<std::endl;
-          for (size_t j = 0; j < _segmentHits.at(index).size(); ++j) {
-              const ev5_HitsInNthStation& hit = _segmentHits[index][j];
-              std::cout << "   No. " << j
-                        << " hitIndice = " << hit.hitIndice
-                        << " station = " << hit.station
-                        << " plane = "   << hit.plane
-                        << " face ="    << hit.face
-                        << " panel ="   << hit.panel
-                        << " x ="       << hit.x
-                        << " y ="       << hit.y
-                        << " z ="       << hit.z
-                        << " phi ="     << hit.phi
-                        << " helixPhi ="     << hit.helixPhi
-                        << " hitID ="   << hit.hitID
-                        << " segmentIndex =" << hit.segmentIndex
-                        << " used ="    << hit.used
-                        << " nturn ="    << hit.nturn
-                        << std::endl;
-          }
-    //Get the slope value from the 1st segment
-    //continue collecting hits until station gap is > 1
-    int Reference_HitIndex = 0;// hit should be located in the upstream tracker
-    int Reference_segmentIndex = 0;// hit should be located in the upstream tracker
-    //int Reference_HitIndice = -1;// hit should be located in the upstream tracker
-    //int Reference_station = 0;
-    double Reference_Phi = -999.9;
-    for(size_t j=0; j<_segmentHits.at(index).size(); j++){
-      Reference_HitIndex = j;
-      Reference_segmentIndex = _segmentHits.at(index).at(j).segmentIndex;
-      //Reference_HitIndice = _segmentHits.at(i).at(j).hitIndice;
-      //Reference_station = _segmentHits.at(i).at(j).station;
-      Reference_Phi = _segmentHits.at(index).at(j).helixPhi;
-      _segmentHits.at(index).at(j).phiDiag = Reference_Phi;
-      /*std::cout<<"best_segments[i][j].Phi = "<<_segmentHits.at(i).at(j).phi<<std::endl;
-      std::cout<<"best_segments[i][j].ambigPhi = "<<_segmentHits.at(i).at(j).ambigPhi<<std::endl;
-      std::cout<<"station_z = "<<_segmentHits.at(i).at(j).z<<std::endl;
-      std::cout<<"station_Reference = "<<_segmentHits.at(i).at(j).station<<std::endl;
-      std::cout<<"Reference_Index = "<<Reference_HitIndex<<std::endl;
-      std::cout<<"Reference_Indice = "<<Reference_HitIndice<<std::endl;
-      std::cout<<"Reference_Phi = "<<Reference_Phi<<std::endl;*/
-      break;
+//--------------------------------------------------------------------------------//
+// ev5_fit_slope_ver4
+//
+// Fits a single straight line phi = alpha*z + beta through the hits stored in
+// _segmentHits.at(index), resolving the 2*pi ambiguity of helixPhi as it goes.
+//
+// 2*pi disambiguation policy:
+//   Hits close to the reference hit (in station number) are NOT used to
+//   predict phi from the running line fit, because a line built from very
+//   few hits spanning a short station range is numerically unreliable and
+//   can send the 2*pi assignment into a runaway error. Those hits are added
+//   to the fitter using only their own stored nturn (no line-based
+//   correction). Line-prediction-based 2*pi resolution is only allowed once
+//   a hit satisfies BOTH of the following:
+//     (a) the hit's station is at least kMinStationGapForTrustedFit stations
+//         downstream of the reference hit's station
+//     (b) the fitter already holds at least kMinHitsForTrustedPrediction points
+//   Condition (a) is the primary criterion for this detector geometry;
+//   condition (b) is kept as an additional safety net for segments that
+//   happen to have very few hits per station.
+//
+// Debug levels (controlled by _debugLevel):
+//   > 0 : one-line summary of the input, the reference hit, and the final
+//         fit result
+//   > 1 : per-hit trace - trust decision (station gap / hit count), branch
+//         taken, and every phi candidate considered
+//   > 2 : full dump of every (z,phi,weight) point handed to _lineFitter, plus
+//         a duplicate-hit check (an ALERT line if the same hitIndice is added
+//         to the fitter more than once)
+//--------------------------------------------------------------------------------//
+void PhiZSeedFinder::ev5_fit_slope_ver4(int index, double& alpha, double& alphaError, double& beta, double& betaError, double& chindf) {
+
+  const bool dbg  = (_debugLevel > 0);
+  const bool dbg2 = (_debugLevel > 0);
+  const bool dbg3 = (_debugLevel > 0);
+
+  const std::string T = "[fit_slope_ver4 idx=" + std::to_string(index) + "]";
+
+  auto& hits = _segmentHits.at(index);
+
+  // --- tunable thresholds for trusting the line-based 2pi resolution ---
+  const int kMinStationGapForTrustedFit  = 2;   // hit.station - Reference_station
+  const int kMinHitsForTrustedPrediction = 4;   // safety net: minimum points already in the fitter
+
+  if (dbg) {
+    std::cout << "\n" << T << " ---------------------------------------------" << std::endl;
+    std::cout << T << " nHit = " << hits.size() << std::endl;
+  }
+  if (dbg2) {
+    std::cout << T << " input hits (z-sorted order expected):" << std::endl;
+    std::cout << T << "   j  hitIndice  station  segIdx  nturn      z      helixPhi" << std::endl;
+    for (size_t j = 0; j < hits.size(); ++j) {
+      const auto& h = hits[j];
+      std::cout << std::fixed
+                << T << "  " << std::setw(3) << j
+                << std::setw(10) << h.hitIndice
+                << std::setw(9)  << h.station
+                << std::setw(8)  << h.segmentIndex
+                << std::setw(7)  << h.nturn
+                << std::setw(10) << std::setprecision(1) << h.z
+                << std::setw(12) << std::setprecision(4) << h.helixPhi
+                << std::endl;
     }
-    ::LsqSums2 _lineFitter;
-    _lineFitter.clear();
-      //only add reference hit to the fiiting function
-    std::cout<<"Reference segmentIndex/z/Phi = "<<Reference_segmentIndex<<"/"<<_segmentHits.at(index).at(Reference_HitIndex).z<<"/"<<Reference_Phi<<std::endl;
-    _lineFitter.addPoint(_segmentHits.at(index).at(Reference_HitIndex).z, Reference_Phi, 0.1);
-    // Step 1: find unique segmentIndex values
-    std::set<int> uniqueSegmentIndices;
-    for (const auto &hit : _segmentHits.at(index)) {
-      uniqueSegmentIndices.insert(hit.segmentIndex);
+  }
+
+  //---------------------------------------------------------------------------
+  // Reference hit: the first entry in the array is the anchor for the whole
+  // fit. This assumes the array is already sorted by z (most upstream hit
+  // first) - the caller is responsible for that ordering.
+  //---------------------------------------------------------------------------
+  const int    Reference_HitIndex     = 0;
+  const int    Reference_segmentIndex = hits.at(Reference_HitIndex).segmentIndex;
+  const int    Reference_station      = hits.at(Reference_HitIndex).station;
+  const double Reference_Phi          = hits.at(Reference_HitIndex).helixPhi;
+  const double Reference_z            = hits.at(Reference_HitIndex).z;
+
+  hits.at(Reference_HitIndex).phiDiag = Reference_Phi;
+
+  if (dbg) {
+    std::cout << std::fixed << std::setprecision(4)
+              << T << " reference hit : j=0  hitIndice=" << hits.at(0).hitIndice
+              << "  segmentIndex=" << Reference_segmentIndex
+              << "  station=" << Reference_station
+              << "  z=" << std::setprecision(1) << Reference_z
+              << "  helixPhi=" << std::setprecision(4) << Reference_Phi << std::endl;
+    std::cout << T << " trust thresholds : station gap >= " << kMinStationGapForTrustedFit
+              << "  AND  fitter points >= " << kMinHitsForTrustedPrediction << std::endl;
+  }
+
+  ::LsqSums2 _lineFitter;
+  _lineFitter.clear();
+  _lineFitter.addPoint(Reference_z, Reference_Phi, 0.1);
+
+  // bookkeeping used only for the debug dump / duplicate check below;
+  // does not affect the fit itself.
+  std::vector<std::tuple<int,double,double,double>> addedPoints;  // (hitIndice, z, phi, weight)
+  std::map<int,int> addCount;                                    // hitIndice -> number of times added
+  addedPoints.emplace_back(hits.at(Reference_HitIndex).hitIndice, Reference_z, Reference_Phi, 0.1);
+  addCount[hits.at(Reference_HitIndex).hitIndice]++;
+
+  //---------------------------------------------------------------------------
+  // Unique segmentIndex values present in this (possibly merged) array.
+  //---------------------------------------------------------------------------
+  std::set<int> uniqueSegmentIndices;
+  for (const auto& h : hits) uniqueSegmentIndices.insert(h.segmentIndex);
+
+  if (dbg) {
+    std::cout << T << " unique segmentIndex values (" << uniqueSegmentIndices.size() << "): {";
+    bool first = true;
+    for (int s : uniqueSegmentIndices) { std::cout << (first ? "" : ",") << s; first = false; }
+    std::cout << "}   Reference_segmentIndex=" << Reference_segmentIndex << std::endl;
+  }
+
+  for (int segIdx : uniqueSegmentIndices) {
+
+    if (dbg2) {
+      std::cout << T << " =============================================" << std::endl;
+      std::cout << T << " outer loop segIdx = " << segIdx
+                << (segIdx == Reference_segmentIndex ? "  (== Reference_segmentIndex)"
+                                                     : "  (!= Reference_segmentIndex)")
+                << std::endl;
+      std::cout << T << " =============================================" << std::endl;
     }
-    std::cout << "Number of unique segmentIndex values = "
-    << uniqueSegmentIndices.size() << std::endl;
-    // Step 2: iterate over each unique segmentIndex and do something
-    for (int segIdx : uniqueSegmentIndices) {
-      std::cout << "=============================== " << std::endl;
-      std::cout << "Processing segmentIndex = " << segIdx << std::endl;
-      std::cout << "=============================== " << std::endl;
-      for(size_t j=0; j<_segmentHits.at(index).size(); j++){
-        std::cout << "No "<<j<<": segIdx/segment" << segIdx << "/"<<_segmentHits.at(index).at(j).segmentIndex<<std::endl;
-          double z = _segmentHits.at(index).at(j).z;
-          double phiError2 = _segmentHits.at(index).at(j).helixPhiError2;
-          double phiWeight = 1.0/phiError2;
-        if(segIdx == Reference_segmentIndex){
-          double z = _segmentHits.at(index).at(j).z;
-          double phiError2 = _segmentHits.at(index).at(j).helixPhiError2;
-          double phiWeight = 1.0/phiError2;
-          // get other hits
-          std::cout<<"kitagawa0 = "<< j<<std::endl;
-          if(Reference_HitIndex == (int)j) continue;
-          //coorect helixphi and consider 2pi boundary
-          float deltaPhi = _segmentHits.at(index).at(j).helixPhi - Reference_Phi;
-          /*std::cout<<"hitIndice = "<<_tcHits[i].hitIndice<<std::endl;
-          std::cout<<"Helixphi = "<<_tcHits[i].helixPhi<<std::endl;
-          std::cout<<"Z = "<<z<<std::endl;
-          std::cout<<"station = "<<_tcHits[i].station<<std::endl;
-          std::cout<<"phi = "<<_tcHits[i].helixPhi<<std::endl;
-          std::cout<<"deltaPhi = "<<deltaPhi<<std::endl;
-          */
-          // If it turns more than pi then, consinder the 2pi boundary
-          int turns = 0;
-          if (deltaPhi > M_PI) turns--;
-          if (deltaPhi < -M_PI) turns++;
-          double phi = _segmentHits.at(index).at(j).helixPhi + turns * 2 * M_PI;
-          //std::cout<<"_tcHits[i].ambigPhi = "<<phi<<std::endl;
-          // quality cut for the 1st segment
-          if(_lineFitter.qn() < 2) {
-            phi = phi + _segmentHits.at(index).at(j).nturn * 2 * M_PI;
-            _lineFitter.addPoint(z, phi, phiWeight);
-            std::cout<<"kitagawa1 = "<< j<<std::endl;
-            std::cout<<"Fitter : "<<j<<" hitIndice/z/helixPhi/phi :"<<_segmentHits.at(index).at(j).hitIndice<<"/"<<z<<"/"<<_segmentHits.at(index).at(j).helixPhi<<"/"<<phi<<std::endl;
-            continue;
-          }
-          if(_lineFitter.qn() >= 2) {
-          std::cout<<"kitagawa2 = "<< j<<std::endl;
-          if(turns != 0){
-              phi = phi + _segmentHits.at(index).at(j).nturn * 2 * M_PI;
-              double phiOrg = _segmentHits.at(index).at(j).helixPhi + _segmentHits.at(index).at(j).nturn * 2 * M_PI;
-              // corss check
-              double lineSlope = _lineFitter.dydx();
-              double lineIntercept = _lineFitter.y0();
-              // Predict phi from the line
-              double predictedPhi = lineSlope * z + lineIntercept;
-              // Compute the difference between prediction and actual
-              double diffPhi[2] = {0.0};
-              diffPhi[0] = predictedPhi - phi;
-              diffPhi[1] = predictedPhi - phiOrg;
-              // choose the nearest assumption
-              if(abs(diffPhi[1]) < abs(diffPhi[0])) phi = phiOrg;
-              // Round delta/2π to nearest integer for wrapping correction
-              std::cout<<"kitagawa3 = "<< j<<std::endl;
-              std::cout<<"Fitter : "<<j<<" hitIndice/z/helixPhi/phi :"<<_segmentHits.at(index).at(j).hitIndice<<"/"<<z<<"/"<<_segmentHits.at(index).at(j).helixPhi<<"/"<<phi<<std::endl;
-              _lineFitter.addPoint(z, phi, phiWeight);
-          }
-            else {
-double phiOrg = phi;
-double candidates[3] = { phiOrg, phiOrg + 2*M_PI, phiOrg - 2*M_PI };
-              // corss check
-              double lineSlope = _lineFitter.dydx();
-              double lineIntercept = _lineFitter.y0();
-              // Predict phi from the line
-              double predictedPhi = lineSlope * z + lineIntercept;
-int best = 0;
-double bestDiff = std::fabs(predictedPhi - candidates[0]);
-for (int k = 1; k < 3; ++k) {
-  double d = std::fabs(predictedPhi - candidates[k]);
-  if (d < bestDiff) { bestDiff = d; best = k; }
-}
-phi = candidates[best];  // choose closest
-phi += _segmentHits.at(index).at(j).nturn * 2*M_PI;
-_lineFitter.addPoint(z, phi, phiWeight);
-              std::cout<<"kitagawa4 = "<< j<<std::endl;
-              std::cout<<"Fitter : "<<j<<" hitIndice/z/helixPhi/phi :"<<_segmentHits.at(index).at(j).hitIndice<<"/"<<z<<"/"<<_segmentHits.at(index).at(j).helixPhi<<"/"<<phi<<std::endl;
-            }
-          }
-        } else {
-          double phi = _segmentHits.at(index).at(j).helixPhi + _segmentHits.at(index).at(j).nturn * 2 * M_PI;
-          _lineFitter.addPoint(z, phi, phiWeight);
-          std::cout<<"kitagawa5 = "<< j<<std::endl;
-          std::cout<<"Fitter : "<<j<<" hitIndice/z/helixPhi/phi :"<<_segmentHits.at(index).at(j).hitIndice<<"/"<<z<<"/"<<_segmentHits.at(index).at(j).helixPhi<<"/"<<phi<<std::endl;
+
+    for (size_t j = 0; j < hits.size(); ++j) {
+
+      const auto& h          = hits.at(j);
+      const double z         = h.z;
+      const double phiError2 = h.helixPhiError2;
+      const double phiWeight = 1.0 / phiError2;
+
+      std::string branch;
+      double      phiChosen = 0.0;
+      bool        added     = false;
+
+      if (segIdx == Reference_segmentIndex) {
+
+        if (Reference_HitIndex == (int)j) {
+          if (dbg2) std::cout << T << "  j=" << j << "  hitIndice=" << h.hitIndice
+                              << "  -> SKIP (reference hit itself)" << std::endl;
+          continue;
         }
-          std::cout<<"kitagawa6 = "<< j<<std::endl;
+
+        // Small correction for the 2*pi boundary relative to the reference
+        // phi. This is independent of the trust decision below: it only
+        // keeps deltaPhi within [-pi,pi] before any line-based reasoning.
+        float deltaPhi = h.helixPhi - Reference_Phi;
+        int   turns    = 0;
+        if (deltaPhi >  M_PI) turns--;
+        if (deltaPhi < -M_PI) turns++;
+        double phi = h.helixPhi + turns * 2 * M_PI;
+
+        const int  stationGap      = h.station - Reference_station;
+        const bool stationOK       = (stationGap >= kMinStationGapForTrustedFit);
+        const bool hitCountOK      = (_lineFitter.qn() >= kMinHitsForTrustedPrediction);
+        const bool trustPrediction = stationOK && hitCountOK;
+
+        if (dbg2)
+          std::cout << std::fixed << std::setprecision(4)
+                    << T << "  j=" << j << "  hitIndice=" << h.hitIndice
+                    << "  station=" << h.station << " (gap=" << stationGap << ")"
+                    << "  qn=" << _lineFitter.qn()
+                    << "  trust=" << (trustPrediction ? "YES" : "NO")
+                    << " (stationOK=" << stationOK << ", hitCountOK=" << hitCountOK << ")"
+                    << std::endl;
+
+        if (!trustPrediction) {
+          // Station gap and/or hit count threshold not met yet: do not use
+          // the line to resolve the 2pi ambiguity. Use the hit's own nturn
+          // directly. The hit is still added to the fitter so that qn() and
+          // the station gap can grow toward the trusted regime.
+          branch    = "UNTRUSTED (station/hit-count threshold not met)";
+          phi       = phi + h.nturn * 2 * M_PI;
+          phiChosen = phi;
+          _lineFitter.addPoint(z, phi, phiWeight);
+          added = true;
+
+        } else {
+          // Both thresholds satisfied: the running line fit is now
+          // numerically trustworthy enough to be used for 2pi disambiguation.
+          double lineSlope     = _lineFitter.dydx();
+          double lineIntercept = _lineFitter.y0();
+          double predictedPhi  = lineSlope * z + lineIntercept;
+
+          if (turns != 0) {
+            branch = "WRAP (turns=" + std::to_string(turns) + ")";
+            phi = phi + h.nturn * 2 * M_PI;
+            double phiOrg = h.helixPhi + h.nturn * 2 * M_PI;
+            double diffPhi[2] = { predictedPhi - phi, predictedPhi - phiOrg };
+            if (dbg2)
+              std::cout << std::fixed << std::setprecision(4)
+                        << T << "    predictedPhi=" << predictedPhi
+                        << "  candidate(turns)=" << phi << " diff=" << diffPhi[0]
+                        << "  candidate(orig)=" << phiOrg << " diff=" << diffPhi[1]
+                        << std::endl;
+            if (std::abs(diffPhi[1]) < std::abs(diffPhi[0])) {
+              phi = phiOrg;
+              branch += " -> chose ORIGINAL";
+            } else {
+              branch += " -> chose TURNS-CORRECTED";
+            }
+            phiChosen = phi;
+            _lineFitter.addPoint(z, phi, phiWeight);
+            added = true;
+
+          } else {
+            branch = "NO-WRAP (candidate search)";
+            double phiOrg = phi;
+            double candidates[3] = { phiOrg, phiOrg + 2 * M_PI, phiOrg - 2 * M_PI };
+            int    best     = 0;
+            double bestDiff = std::fabs(predictedPhi - candidates[0]);
+            for (int k = 1; k < 3; ++k) {
+              double d = std::fabs(predictedPhi - candidates[k]);
+              if (d < bestDiff) { bestDiff = d; best = k; }
+            }
+            if (dbg2)
+              std::cout << std::fixed << std::setprecision(4)
+                        << T << "    predictedPhi=" << predictedPhi
+                        << "  candidates=[" << candidates[0] << "," << candidates[1]
+                        << "," << candidates[2] << "]  chosen index=" << best
+                        << " (bestDiff=" << bestDiff << ")" << std::endl;
+            phi = candidates[best];
+            phi += h.nturn * 2 * M_PI;
+            phiChosen = phi;
+            _lineFitter.addPoint(z, phi, phiWeight);
+            added = true;
+            branch += "  best=" + std::to_string(best);
+          }
+        }
+
+      } else {
+        // Hit belongs to a different segmentIndex than the reference: use
+        // its own nturn directly, no line-based disambiguation.
+        branch     = "OTHER-SEGMENT (direct nturn)";
+        double phi = h.helixPhi + h.nturn * 2 * M_PI;
+        phiChosen  = phi;
+        _lineFitter.addPoint(z, phi, phiWeight);
+        added = true;
+      }
+
+      if (added) {
+        addCount[h.hitIndice]++;
+        addedPoints.emplace_back(h.hitIndice, z, phiChosen, phiWeight);
+
+        if (dbg2) {
+          std::cout << std::fixed << std::setprecision(4)
+                    << T << "    ADD  hitIndice=" << h.hitIndice
+                    << "  z=" << std::setprecision(1) << z
+                    << "  helixPhi=" << std::setprecision(4) << h.helixPhi
+                    << "  phi(used)=" << phiChosen
+                    << "  branch=[" << branch << "]"
+                    << "  qn_after=" << _lineFitter.qn() << std::endl;
+        }
+        if (addCount[h.hitIndice] > 1) {
+          std::cout << T << "  !!! ALERT !!! hitIndice=" << h.hitIndice
+                    << " has been added to _lineFitter " << addCount[h.hitIndice]
+                    << " times (outer segIdx=" << segIdx
+                    << ", own segmentIndex=" << h.segmentIndex
+                    << ") - this hit is being double-counted in the fit." << std::endl;
+        }
       }
     }
-      //return fitting values
-      double dphidz = _lineFitter.dydx();
-      alpha = dphidz;
-      alphaError = _lineFitter.dydxErr();
-      beta = _lineFitter.y0();
-      betaError = _lineFitter.y0Err();
-      chindf = _lineFitter.chi2Dof();
-
-    std::cout<<"ev5_fit_slope_ver4_end"<<std::endl;
   }
+
+  //---------------------------------------------------------------------------
+  // Final fit result
+  //---------------------------------------------------------------------------
+  alpha      = _lineFitter.dydx();
+  alphaError = _lineFitter.dydxErr();
+  beta       = _lineFitter.y0();
+  betaError  = _lineFitter.y0Err();
+  chindf     = _lineFitter.chi2Dof();
+
+  if (dbg3) {
+    std::cout << T << " points actually given to the fitter (in add order):" << std::endl;
+    std::cout << T << "   #   hitIndice        z        phi     weight" << std::endl;
+    for (size_t k = 0; k < addedPoints.size(); ++k) {
+      const auto& [hid, zAdded, phiAdded, w] = addedPoints[k];
+      std::cout << std::fixed
+                << T << "  " << std::setw(3) << k
+                << std::setw(10) << hid
+                << std::setw(11) << std::setprecision(1) << zAdded
+                << std::setw(12) << std::setprecision(4) << phiAdded
+                << std::setw(11) << std::setprecision(2) << w << std::endl;
+    }
+  }
+
+  const int nPointsAdded = _lineFitter.qn();
+  if (dbg) {
+    std::cout << T << " nInputHits=" << hits.size()
+              << "  nPointsInFitter=" << nPointsAdded
+              << (uniqueSegmentIndices.size() == 1 && nPointsAdded != (int)hits.size()
+                    ? "   <-- unexpected mismatch (single segment but counts differ)"
+                    : "") << std::endl;
+  }
+  if (dbg) {
+    std::cout << std::scientific << std::setprecision(4)
+              << T << " RESULT alpha=" << alpha << " +- " << alphaError
+              << "  beta=" << beta << " +- " << betaError
+              << std::fixed << std::setprecision(3)
+              << "  chi2/ndf=" << chindf
+              << "  (nPointsInFitter=" << nPointsAdded << ")" << std::endl;
+   }
+
+}//end ev5_fit_slope_ver4
+
+//----------------------------------------------------------------------------
+//--------------------------------------------------------------------------------//
+// ev5_fit_slope_ver5
+//
+// Fits a single straight line phi = alpha*z + beta through the hits stored in
+// _segmentHits.at(index), resolving the 2*n*pi ambiguity of helixPhi as it goes.
+// This routine is used ONLY to judge whether two PhiZ segments can be merged;
+// nothing it computes is meant to survive into the final helix parameters, and
+// it is deliberately free of side effects on anything outside _segmentHits.
+//
+// Physics model
+// -------------
+// A particle spirals through the tracker, so its trajectory is a straight line
+// in the (z, helixPhi) plane. helixPhi comes from atan2 and is therefore folded
+// into (-pi,pi], while the true phi keeps growing with z. Two distinct effects
+// have to be undone, and they are NOT the same thing:
+//
+//   m_i  (intra-segment winding)
+//        Even inside one segment the trajectory keeps turning, so as z grows
+//        the folded helixPhi wraps past +/-pi one or more times. Because the
+//        segment is continuously observed, m_i follows unambiguously from the
+//        hit ordering - it varies from hit to hit and is NOT constant within a
+//        segment.
+//
+//   N_S  (per-segment offset)
+//        While the particle crosses the hollow central region of the tracker no
+//        hits are produced, and it reappears one or more full turns later as a
+//        separate segment with a different segmentIndex. That invisible number
+//        of turns is unknown, but it is a single integer shared by every hit of
+//        the segment, since the segment itself is continuously observed.
+//
+// So the total turn number of hit i in segment S is
+//
+//        n_i = m_i + N_S
+//
+// and only the N_S part is common to a segment. Treating the whole segment as
+// one common n (as an earlier version did) is wrong; resolving every hit
+// independently is also wrong, because a single noisy hit could then be pushed
+// a full turn away from its own segment.
+//
+// Dependency order
+// ----------------
+//   alpha (trusted slope)  ->  m_i  ->  N_S
+//
+// m_i is measured relative to the segment's OWN first hit, so it is a purely
+// relative quantity and does not need N_S. It also uses only alpha, never the
+// intercept beta: early in the fit beta is the unstable parameter, and keeping
+// it out of this step is what prevents the runaway seen in earlier versions.
+// N_S is then fixed by comparing the m-corrected segment against the global
+// line, and therefore has to come second.
+//
+// Algorithm
+// ---------
+//   PHASE 1 (seed, reference segment)
+//     Reference hit = smallest z in the whole array. Hits are added with only a
+//     [-pi,pi] wrap relative to the reference phi - no line prediction - until
+//     the fit is trustworthy: station gap >= kMinStationGapForTrustedFit AND
+//     fitter points >= kMinHitsForTrustedPrediction. Over such a short lever
+//     arm the trajectory cannot have turned by more than pi, so the simple wrap
+//     is safe here. Seed hits are added to the fitter so it grows toward the
+//     trusted regime.
+//
+//   PHASE 2 (reference segment, m_i)
+//     Once a trusted alpha exists, m_i is recomputed for EVERY hit of the
+//     reference segment - including the seed hits - and the fitter is rebuilt
+//     from scratch. This repairs any seed hit that the naive wrap got wrong.
+//     N_S is 0 for the reference segment by definition: it anchors the fit.
+//
+//   PHASE 3 (remaining segments, m_i then N_S)
+//     Segments are visited in order of increasing z. For each one, m_i is
+//     derived from the current alpha, then a single N_S is chosen by scanning
+//     candidate offsets and keeping the one with the smallest weighted residual
+//     against the current line. All hits are then added with n_i = m_i + N_S,
+//     after which alpha and beta update for the next segment.
+//
+// Note on the running fit: LsqSums2 accumulates sums, so dydx() and y0() change
+// after every addPoint(). Predictions therefore always reflect every hit added
+// so far - which is also why a hit added with a wrong turn number immediately
+// contaminates the next prediction.
+//
+// Debug levels (_debugLevel):
+//   > 0 : input summary, reference hit, phase transitions, per-segment N_S,
+//         final result
+//   > 1 : per-hit trace with trust decision, m_i and n_i
+//   > 2 : full N_S scan per segment and the complete list of fitted points
+//--------------------------------------------------------------------------------//
+void PhiZSeedFinder::ev5_fit_slope_ver5(int index, double& alpha, double& alphaError,
+                                        double& beta, double& betaError, double& chindf) {
+
+  const bool dbg  = (_debugLevel > 0);
+  const bool dbg2 = (_debugLevel > 1);
+  const bool dbg3 = (_debugLevel > 2);
+
+  const std::string T = "[fit_slope_ver5 idx=" + std::to_string(index) + "]";
+
+  auto& hits = _segmentHits.at(index);
+
+  // --- tunable thresholds ---
+  const int kMinStationGapForTrustedFit  = 2;   // |hit.station - Reference_station|
+  const int kMinHitsForTrustedPrediction = 4;   // minimum points already in the fitter
+  const int kMaxTurnSearch               = 6;   // range of N_S offsets scanned
+
+  alpha = alphaError = beta = betaError = chindf = 0.0;
+  if (hits.empty()) {
+    if (dbg) std::cout << T << " empty segment, nothing to fit" << std::endl;
+    return;
+  }
+
+  //---------------------------------------------------------------------------
+  // Order hits by z without disturbing the caller's array: work on indices.
+  //---------------------------------------------------------------------------
+  std::vector<size_t> order(hits.size());
+  for (size_t k = 0; k < hits.size(); ++k) order[k] = k;
+  std::sort(order.begin(), order.end(),
+            [&hits](size_t a, size_t b) { return hits[a].z < hits[b].z; });
+
+  const size_t Reference_HitIndex     = order.front();   // smallest z overall
+  const int    Reference_segmentIndex = hits.at(Reference_HitIndex).segmentIndex;
+  const int    Reference_station      = hits.at(Reference_HitIndex).station;
+  const double Reference_Phi          = hits.at(Reference_HitIndex).helixPhi;
+  const double Reference_z            = hits.at(Reference_HitIndex).z;
+
+  //---------------------------------------------------------------------------
+  // Group hits by segmentIndex (each group z-ordered); visit groups by min z.
+  //---------------------------------------------------------------------------
+  std::map<int, std::vector<size_t>> hitsBySegment;
+  for (size_t p : order) hitsBySegment[hits[p].segmentIndex].push_back(p);
+
+  std::vector<int> segmentOrder;
+  for (const auto& kv : hitsBySegment) segmentOrder.push_back(kv.first);
+  std::sort(segmentOrder.begin(), segmentOrder.end(),
+            [&](int a, int b) {
+              return hits[hitsBySegment[a].front()].z < hits[hitsBySegment[b].front()].z;
+            });
+
+  if (dbg) {
+    std::cout << "\n" << T << " ---------------------------------------------" << std::endl;
+    std::cout << T << " nHit = " << hits.size()
+              << " , nSegment = " << segmentOrder.size() << std::endl;
+    std::cout << std::fixed << std::setprecision(4)
+              << T << " reference hit (smallest z) : arrayIdx=" << Reference_HitIndex
+              << "  hitIndice=" << hits.at(Reference_HitIndex).hitIndice
+              << "  segmentIndex=" << Reference_segmentIndex
+              << "  station=" << Reference_station
+              << "  z=" << std::setprecision(1) << Reference_z
+              << "  helixPhi=" << std::setprecision(4) << Reference_Phi << std::endl;
+    std::cout << T << " trust thresholds : station gap >= " << kMinStationGapForTrustedFit
+              << "  AND  fitter points >= " << kMinHitsForTrustedPrediction << std::endl;
+    for (int s : segmentOrder) {
+      const auto& g = hitsBySegment[s];
+      std::cout << std::fixed << std::setprecision(1)
+                << T << "   segmentIndex=" << s
+                << "  nHit=" << g.size()
+                << "  z [" << hits[g.front()].z << "," << hits[g.back()].z << "]"
+                << "  station [" << hits[g.front()].station << "," << hits[g.back()].station << "]"
+                << (s == Reference_segmentIndex ? "   <== reference segment" : "")
+                << std::endl;
+    }
+  }
+
+  ::LsqSums2 _lineFitter;
+  _lineFitter.clear();
+
+  std::vector<std::tuple<int,double,double,int>> fitted;   // (hitIndice, z, phi, n)
+
+  // Add one hit with turn number n; also records it for the debug dump.
+  auto addHit = [&](size_t arrayIdx, int n, const char* branch) {
+    auto& h = hits.at(arrayIdx);
+    const double phi = h.helixPhi + n * 2.0 * M_PI;
+    _lineFitter.addPoint(h.z, phi, 1.0 / h.helixPhiError2);
+    h.nturn   = n;      // diagnostic only; not relied on downstream
+    h.phiDiag = phi;    // diagnostic only; the phi actually fitted
+    fitted.emplace_back(h.hitIndice, h.z, phi, n);
+    if (dbg2)
+      std::cout << std::fixed << std::setprecision(4)
+                << T << "    ADD hitIndice=" << std::setw(4) << h.hitIndice
+                << "  station=" << std::setw(2) << h.station
+                << "  z=" << std::setw(9) << std::setprecision(1) << h.z
+                << "  helixPhi=" << std::setw(8) << std::setprecision(4) << h.helixPhi
+                << "  n=" << std::setw(3) << n
+                << "  phi=" << std::setw(9) << phi
+                << "  [" << branch << "]"
+                << "  qn_after=" << _lineFitter.qn() << std::endl;
+  };
+
+  // m_i for one hit: winding relative to the segment's own first hit, using
+  // only the slope. Independent of N_S and of the intercept.
+  auto intraSegmentWinding = [&](size_t arrayIdx, size_t firstIdx, double slope) {
+    const auto& h  = hits.at(arrayIdx);
+    const auto& h0 = hits.at(firstIdx);
+    const double dPhiExpected = slope * (h.z - h0.z);
+    const double dPhiObserved = h.helixPhi - h0.helixPhi;
+    return (int)std::round((dPhiExpected - dPhiObserved) / (2.0 * M_PI));
+  };
+
+  const std::vector<size_t>& refGroup = hitsBySegment[Reference_segmentIndex];
+
+  //---------------------------------------------------------------------------
+  // PHASE 1 : seed the fit from the reference segment
+  //---------------------------------------------------------------------------
+  if (dbg) std::cout << T << " --- PHASE 1 : seed (reference segment "
+                     << Reference_segmentIndex << ") ---" << std::endl;
+
+  addHit(Reference_HitIndex, 0, "PHASE1 reference hit");
+
+  bool trustReached = false;
+  for (size_t k = 0; k < refGroup.size(); ++k) {
+    const size_t p = refGroup[k];
+    if (p == Reference_HitIndex) continue;
+
+    const auto& h = hits.at(p);
+    const int  stationGap = std::abs(h.station - Reference_station);
+    const bool stationOK  = (stationGap >= kMinStationGapForTrustedFit);
+    const bool countOK    = (_lineFitter.qn() >= kMinHitsForTrustedPrediction);
+
+    if (stationOK && countOK) {
+      trustReached = true;
+      if (dbg)
+        std::cout << std::scientific << std::setprecision(4)
+                  << T << "   trust reached at hitIndice=" << h.hitIndice
+                  << " (stationGap=" << stationGap << ", qn=" << _lineFitter.qn() << ")"
+                  << "  seed slope=" << _lineFitter.dydx()
+                  << std::fixed << std::endl;
+      break;
+    }
+
+    // Short lever arm: the trajectory cannot have turned by more than pi here,
+    // so a plain [-pi,pi] wrap against the reference phi is sufficient.
+    const double deltaPhi = h.helixPhi - Reference_Phi;
+    int n = 0;
+    if (deltaPhi >  M_PI) n = -1;
+    if (deltaPhi < -M_PI) n = +1;
+    addHit(p, n, "PHASE1 seed wrap");
+  }
+
+  //---------------------------------------------------------------------------
+  // PHASE 2 : reference segment, proper m_i for every hit (N_S = 0)
+  //---------------------------------------------------------------------------
+  if (trustReached) {
+
+    const double alphaSeed = _lineFitter.dydx();
+
+    if (dbg)
+      std::cout << std::scientific << std::setprecision(4)
+                << T << " --- PHASE 2 : reference segment m_i with alphaSeed="
+                << alphaSeed << std::fixed << " ---" << std::endl;
+
+    // Rebuild the fit from scratch so that seed hits wrapped by the naive rule
+    // are corrected too.
+    _lineFitter.clear();
+    fitted.clear();
+
+    for (size_t p : refGroup) {
+      const int m = intraSegmentWinding(p, Reference_HitIndex, alphaSeed);
+      addHit(p, m, "PHASE2 m_i (N_S=0)");
+    }
+
+    if (dbg)
+      std::cout << std::scientific << std::setprecision(4)
+                << T << "   after PHASE 2 : alpha=" << _lineFitter.dydx()
+                << " beta=" << _lineFitter.y0()
+                << std::fixed << std::setprecision(3)
+                << " chi2/ndf=" << _lineFitter.chi2Dof()
+                << " (qn=" << _lineFitter.qn() << ")" << std::endl;
+
+  } else if (dbg) {
+    std::cout << T << " --- PHASE 2 skipped : trust never reached, keeping seed wraps"
+              << " (qn=" << _lineFitter.qn() << ") ---" << std::endl;
+  }
+
+  //---------------------------------------------------------------------------
+  // PHASE 3 : remaining segments, m_i then a single N_S each
+  //---------------------------------------------------------------------------
+  for (int segIdx : segmentOrder) {
+    if (segIdx == Reference_segmentIndex) continue;
+
+    const std::vector<size_t>& group = hitsBySegment[segIdx];
+
+    if (dbg) std::cout << T << " --- PHASE 3 : segment " << segIdx
+                       << " (" << group.size() << " hits) ---" << std::endl;
+
+    if (_lineFitter.qn() < 2) {
+      if (dbg) std::cout << T << "   no usable line (qn=" << _lineFitter.qn()
+                         << "), keeping stored nturn" << std::endl;
+      for (size_t p : group) addHit(p, hits.at(p).nturn, "PHASE3 fallback");
+      continue;
+    }
+
+    const double lineSlope     = _lineFitter.dydx();
+    const double lineIntercept = _lineFitter.y0();
+    const size_t firstIdx      = group.front();     // smallest z in this segment
+
+    // --- step A: m_i inside this segment, from the slope only ---
+    std::map<size_t,int> m;
+    for (size_t p : group) m[p] = intraSegmentWinding(p, firstIdx, lineSlope);
+
+    if (dbg2) {
+      std::cout << std::fixed << std::setprecision(4)
+                << T << "   line: slope=" << lineSlope << " intercept=" << lineIntercept
+                << std::endl;
+      std::cout << T << "   intra-segment winding m_i:" << std::endl;
+      std::cout << T << "     hitIndice  station        z   helixPhi   m_i" << std::endl;
+      for (size_t p : group) {
+        const auto& h = hits.at(p);
+        std::cout << std::fixed
+                  << T << "     " << std::setw(9) << h.hitIndice
+                  << std::setw(9)  << h.station
+                  << std::setw(10) << std::setprecision(1) << h.z
+                  << std::setw(11) << std::setprecision(4) << h.helixPhi
+                  << std::setw(6)  << m[p] << std::endl;
+      }
+    }
+
+    // --- step B: one common offset N_S for the whole segment ---
+    int    bestN    = 0;
+    double bestCost = std::numeric_limits<double>::max();
+
+    for (int N = -kMaxTurnSearch; N <= kMaxTurnSearch; ++N) {
+      double cost = 0.0;
+      for (size_t p : group) {
+        const auto& h = hits.at(p);
+        const double phi   = h.helixPhi + (m[p] + N) * 2.0 * M_PI;
+        const double resid = phi - (lineSlope * h.z + lineIntercept);
+        cost += (1.0 / h.helixPhiError2) * resid * resid;
+      }
+      if (dbg3)
+        std::cout << T << "     trial N_S=" << std::setw(3) << N
+                  << "  weighted cost=" << std::scientific << std::setprecision(4)
+                  << cost << std::fixed << std::endl;
+      if (cost < bestCost) { bestCost = cost; bestN = N; }
+    }
+
+    if (dbg)
+      std::cout << T << "   chosen N_S=" << bestN
+                << "  (weighted cost=" << std::scientific << std::setprecision(4)
+                << bestCost << std::fixed << ")" << std::endl;
+
+    for (size_t p : group) addHit(p, m[p] + bestN, "PHASE3 m_i + N_S");
+
+    if (dbg)
+      std::cout << std::scientific << std::setprecision(4)
+                << T << "   after segment " << segIdx << " : alpha=" << _lineFitter.dydx()
+                << " beta=" << _lineFitter.y0()
+                << std::fixed << std::setprecision(3)
+                << " chi2/ndf=" << _lineFitter.chi2Dof()
+                << " (qn=" << _lineFitter.qn() << ")" << std::endl;
+  }
+
+  //---------------------------------------------------------------------------
+  // Final fit result
+  //---------------------------------------------------------------------------
+  alpha      = _lineFitter.dydx();
+  alphaError = _lineFitter.dydxErr();
+  beta       = _lineFitter.y0();
+  betaError  = _lineFitter.y0Err();
+  chindf     = _lineFitter.chi2Dof();
+
+  if (dbg3) {
+    std::cout << T << " points given to the fitter (in add order):" << std::endl;
+    std::cout << T << "   #   hitIndice        z        phi    n     resid" << std::endl;
+    for (size_t k = 0; k < fitted.size(); ++k) {
+      const auto& [hid, zf, phif, nf] = fitted[k];
+      const double resid = phif - (alpha * zf + beta);
+      std::cout << std::fixed
+                << T << "  " << std::setw(3) << k
+                << std::setw(10) << hid
+                << std::setw(11) << std::setprecision(1) << zf
+                << std::setw(12) << std::setprecision(4) << phif
+                << std::setw(5)  << nf
+                << std::setw(10) << std::setprecision(4) << resid << std::endl;
+    }
+  }
+
+  if (dbg) {
+    std::cout << T << " nInputHits=" << hits.size()
+              << "  nPointsInFitter=" << _lineFitter.qn()
+              << (_lineFitter.qn() != (int)hits.size()
+                    ? "   <-- mismatch: some hits were not fitted"
+                    : "") << std::endl;
+    std::cout << std::scientific << std::setprecision(4)
+              << T << " RESULT alpha=" << alpha << " +- " << alphaError
+              << "  beta=" << beta << " +- " << betaError
+              << std::fixed << std::setprecision(3)
+              << "  chi2/ndf=" << chindf << std::endl;
+  }
+
+}//end ev5_fit_slope_ver5
+
+
+
 //--------------------------------------------------------------------------------//
   void PhiZSeedFinder::ev5_select_best_segments_step_04(std::vector<std::vector<ev5_HitsInNthStation>>& ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& ThisIsBestSegment_Diag, int nCH, double threshold_deltaphi){
       if(!(ThisIsBestSegment.size() >= 2)) return;
@@ -3283,180 +4618,460 @@ _lineFitter.addPoint(z, phi, phiWeight);
     }
     //std::cout<<"ThisIsBestSegment size = "<<ThisIsBestSegment.size()<<std::endl;
   }//end ev5_select_best_segments_step_05
+
 //-----------------------------------------------------------------------------
-  void PhiZSeedFinder::ev5_select_best_segments_step_06(std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag, double threshold_deltaphi){
-      //std::cout << "-----------------------------------" << std::endl;
-      //std::cout << "-----------------------------------" << std::endl;
-      //std::cout << " ev5_select_best_segments_step_06  " << std::endl;
-      //std::cout << "-----------------------------------" << std::endl;
-      //std::cout << "-----------------------------------" << std::endl;
+void PhiZSeedFinder::ev5_select_best_segments_step_06(std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag, double threshold_deltaphi){
+
+    // --- Helper Lambda for Printing ---
+    auto printCurrentSegments = [&](const std::string& label, const std::vector<std::vector<ev5_HitsInNthStation>>& currentSegs) {
+        if (!_debugLevel) return; // Only print if debug is on
+        std::cout << "\n================================================================================\n";
+        std::cout << " [Step 06 State] " << label << " (Count: " << currentSegs.size() << ")\n";
+        std::cout << "================================================================================\n";
+
+        for (size_t i = 0; i < currentSegs.size(); ++i) {
+             std::cout << std::format("\nSegment {} contains {} hits:\n", i, currentSegs[i].size());
+             std::cout << "  HitID | X        | Y        | Z         | Phi\n";
+             std::cout << "  --------------------------------------------------\n";
+             for (const auto& h : currentSegs[i]) {
+                  // Assuming h.hitID is the unique identifier you are filtering by
+                  std::cout << std::format("  {:<5} | {:<8.2f} | {:<8.2f} | {:<9.2f} | {:.3f}\n",
+                                           h.hitID, h.x, h.y, h.z, h.phi);
+             }
+        }
+        std::cout << "--------------------------------------------------------------------------------\n";
+    };
+
+    // 1. PRINT INITIAL STATE
+    printCurrentSegments("INITIAL INPUT", all_ThisIsBestSegment);
+
     //-----------------------------------------------------------------
     //    Remove identical segments
     //-----------------------------------------------------------------
-    //---------------------------------------------------------------------------------------------------------
-    //  (1). Check all hitIDs in each segments and remove segments if there is duplicate
-    //---------------------------------------------------------------------------------------------------------
-    //std::cout<<"Print the intial hitID_list "<<std::endl;
+
+    // (1). Create Sorted Hit Lists for Uniqueness Check
     std::vector<std::vector<int>> hitID_list;
     hitID_list.clear();
     for(int i=0; i<(int)all_ThisIsBestSegment.size(); i++){
-      std::vector<int> temp_hitID_list;
-      temp_hitID_list.clear();
-      for(int j=0; j<(int)all_ThisIsBestSegment.at(i).size(); j++){
-        temp_hitID_list.push_back(all_ThisIsBestSegment.at(i).at(j).hitID);
-      }
-      //Sort temp_hitID_list in increasing order
-      sort(temp_hitID_list.begin(), temp_hitID_list.end());
-      hitID_list.push_back(temp_hitID_list);
+        std::vector<int> temp_hitID_list;
+        temp_hitID_list.clear();
+        for(int j=0; j<(int)all_ThisIsBestSegment.at(i).size(); j++){
+            temp_hitID_list.push_back(all_ThisIsBestSegment.at(i).at(j).hitID);
+        }
+        //Sort temp_hitID_list in increasing order
+        sort(temp_hitID_list.begin(), temp_hitID_list.end());
+        hitID_list.push_back(temp_hitID_list);
     }
-    // Remove duplicates
+
+    // Remove duplicates from the list of IDs
     std::sort(hitID_list.begin(), hitID_list.end());
     hitID_list.erase(std::unique(hitID_list.begin(), hitID_list.end()), hitID_list.end());
+
     //---------------------------------------------------------------------------------------------------------
-    // (2). delete if there is overlap: example, 0-1-2 and 0-1-2-4, 1-2-4 and 0-1-2-4, in this case 0-1-2-4 will remain
+    // (2). Remove Subsets (e.g., if 0-1-2 and 0-1-2-4 exist, remove 0-1-2)
     //---------------------------------------------------------------------------------------------------------
     std::vector<int> delete_index;
     delete_index.clear();
     for (int i = 0; i < (int)hitID_list.size(); i++) {
-      //std::cout << "i = " << i << std::endl;
-      for (int j = 0; j <(int)hitID_list.size(); j++) {
-        if(i == j) continue;
-        if(hitID_list.at(j) == hitID_list.at(i)){
-          //std::cout << "found j = " << j << std::endl;
-          continue;
+        for (int j = 0; j <(int)hitID_list.size(); j++) {
+            if(i == j) continue;
+            // If lists are identical, skip (handled by unique above, but safe to keep)
+            if(hitID_list.at(j) == hitID_list.at(i)) continue;
+
+            int size = 0;
+            // Check if List I is fully contained in List J
+            for (int k = 0; k <(int)hitID_list.at(j).size(); k++) {
+                for (int l = 0; l <(int)hitID_list.at(i).size(); l++) {
+                    if(hitID_list.at(i).at(l) == hitID_list.at(j).at(k)) size++;
+                }
+            }
+            // If all hits in I are found in J, mark I for deletion
+            if(size == (int)hitID_list.at(i).size()) delete_index.push_back(i);
         }
-        int size = 0;
-        for (int k = 0; k <(int)hitID_list.at(j).size(); k++) {
-          for (int l = 0; l <(int)hitID_list.at(i).size(); l++) {
-            if(hitID_list.at(i).at(l) == hitID_list.at(j).at(k)) size++;
-          }
-        }
-        if(size == (int)hitID_list.at(i).size()) delete_index.push_back(i);
-      }
     }
-    //  make a new hitID after removing the overlap event
+
+    // Make a new hitID list after removing the subset events
     std::vector<std::vector<int>> new_hitID_list;
     for(int i = 0; i <(int)hitID_list.size(); i++){
-      int go = 1;
-      for(int j=0; j<(int)delete_index.size(); j++){
-        if(delete_index.at(j) == i) go = 0;
-      }
-      if(go == 1) new_hitID_list.push_back(hitID_list.at(i));
+        int go = 1;
+        for(int j=0; j<(int)delete_index.size(); j++){
+            if(delete_index.at(j) == i) go = 0;
+        }
+        if(go == 1) new_hitID_list.push_back(hitID_list.at(i));
     }
+
     //---------------------------------------------------------------------------------------------------------
-    // (3)  find an endex in "new hitID" correspond to the all_ThisIsBestSegment
+    // (3) Map the "New HitIDs" back to Segment Objects
     //---------------------------------------------------------------------------------------------------------
-    //std::cout<<"Step (3-0)"<<std::endl;
     std::vector<int> find_index;
     find_index.clear();
     for (int i = 0; i < (int)new_hitID_list.size(); i++) {
-      //std::cout << "i = " << i << std::endl;
         bool flag = 0;
         int index_for_segment = 0;
+
+        // Find the first segment in the original list that matches this HitID pattern
         for(int j=0; j<(int)all_ThisIsBestSegment.size(); j++){
-          int count = 0;
-          if(new_hitID_list.at(i).size() != all_ThisIsBestSegment.at(j).size()) continue;
-          for (int k = 0; k<(int)new_hitID_list.at(i).size(); k++) {
-              for(int l=0; l<(int)all_ThisIsBestSegment.at(j).size(); l++){
-                if(new_hitID_list.at(i).at(k) == all_ThisIsBestSegment.at(j).at(l).hitID) count++;
-              }
-          }
-          if(count == (int)new_hitID_list.at(i).size()){
-            flag = 1;
-            index_for_segment = j;
-            break;
-          }
+            int count = 0;
+            if(new_hitID_list.at(i).size() != all_ThisIsBestSegment.at(j).size()) continue;
+
+            for (int k = 0; k<(int)new_hitID_list.at(i).size(); k++) {
+                for(int l=0; l<(int)all_ThisIsBestSegment.at(j).size(); l++){
+                    if(new_hitID_list.at(i).at(k) == all_ThisIsBestSegment.at(j).at(l).hitID) count++;
+                }
+            }
+            if(count == (int)new_hitID_list.at(i).size()){
+                flag = 1;
+                index_for_segment = j;
+                break;
+            }
         }
         if(flag == 1) find_index.push_back(index_for_segment);
     }
-    //find endex is only the parameter used for next step
-    //std::cout<<"(int)find_index.size() = "<<(int)find_index.size()<<std::endl;
+
+    // Create the temporary "Cleaned" lists
     std::vector<std::vector<ev5_HitsInNthStation>> temp_ThisIsBestSegment;
     std::vector<std::vector<ev5_Segment>> temp_ThisIsBestSegment_Diag;
     temp_ThisIsBestSegment.clear();
     temp_ThisIsBestSegment_Diag.clear();
-    //select the best candidate
+
     for(int i=0; i<(int)all_ThisIsBestSegment.size(); i++){
-      bool go = 0;
-      for(int j=0; j<(int)find_index.size(); j++){
-        if(find_index[j] == i) go = 1;
-      }
-      if(go != 1) continue;
-      //push back segment
-      temp_ThisIsBestSegment.push_back(all_ThisIsBestSegment.at(i));
-      temp_ThisIsBestSegment_Diag.push_back(all_ThisIsBestSegment_Diag.at(i));
+        bool go = 0;
+        for(int j=0; j<(int)find_index.size(); j++){
+            if(find_index[j] == i) go = 1;
+        }
+        if(go != 1) continue;
+        temp_ThisIsBestSegment.push_back(all_ThisIsBestSegment.at(i));
+        temp_ThisIsBestSegment_Diag.push_back(all_ThisIsBestSegment_Diag.at(i));
     }
+
+    // 2. PRINT AFTER SUBSET/DUPLICATE REMOVAL
+    printCurrentSegments("AFTER SUBSET/DUPLICATE REMOVAL", temp_ThisIsBestSegment);
+
     //---------------------------------------------------------------------------------------------------------
-    // Select good segments and remove unwanted segments
+    // Select good segments and remove unwanted segments based on Overlap/Alpha
+    //---------------------------------------------------------------------------------------------------------
+    /*std::vector<int> delete_segmentID;
+    delete_segmentID.clear();
+
+    for(int i=0; i<(int)temp_ThisIsBestSegment.size(); i++){
+        for(int j=0; j<(int)temp_ThisIsBestSegment.size(); j++){
+            if(i==j) continue;
+
+            double alpha[2] = {temp_ThisIsBestSegment_Diag.at(i).at(0).alpha, temp_ThisIsBestSegment_Diag.at(j).at(0).alpha};
+            double alpha_diff = 0.0;
+            double alpha_sigma = 0.0003199; // Obtained from "ev5_plot_AlphaDiagBestSegment"
+
+            if(alpha[0]*alpha[1] > 0){ // Both slopes same sign
+                alpha_diff = fabs(alpha[0] - alpha[1]);
+            }
+            if(alpha[0]*alpha[1] < 0){ // Opposite signs
+                alpha[0] = fabs(alpha[0]);
+                alpha[1] = fabs(alpha[1]);
+                alpha_diff = alpha[0] + alpha[1];
+            }
+
+            double chiNDF[2] = {temp_ThisIsBestSegment_Diag.at(i).at(0).chiNDF, temp_ThisIsBestSegment_Diag.at(j).at(0).chiNDF};
+            int TotalHitinSegments[2] = {(int)temp_ThisIsBestSegment_Diag.at(i).size(), (int)temp_ThisIsBestSegment_Diag.at(j).size()};
+
+            int overlappedHits = 0;
+            for(int k=0; k<(int)temp_ThisIsBestSegment.at(i).size(); k++){
+                for(int l=0; l<(int)temp_ThisIsBestSegment.at(j).size(); l++){
+                    // Using hitID to check overlap
+                    if(temp_ThisIsBestSegment.at(i).at(k).hitID == temp_ThisIsBestSegment.at(j).at(l).hitID) overlappedHits++;
+                }
+            }
+
+            double fraction[2] = {0.0};
+            if(TotalHitinSegments[0] > 0) fraction[0] = (double)overlappedHits/TotalHitinSegments[0];
+            if(TotalHitinSegments[1] > 0) fraction[1] = (double)overlappedHits/TotalHitinSegments[1];
+
+            if(alpha_diff > alpha_sigma*5) continue; // Slopes are too different, likely distinct tracks
+
+            // (1) 2 segments are not identical but ComboHits are overlapped -> Remove the one with less unique content?
+            if(fraction[0] <= 0.3 and fraction[1] >= 0.6){
+                delete_segmentID.push_back(i);
+            }
+            // (2) 2 segments are identical/highly overlapped -> Select the one with better Chi2
+            if(fraction[0] >= 0.7 and fraction[1] >= 0.7){
+                if(chiNDF[0] < chiNDF[1]) delete_segmentID.push_back(j); // Delete J if I is better
+                else delete_segmentID.push_back(i);                      // Delete I if J is better
+            }
+        }
+    }*/
+    //---------------------------------------------------------------------------------------------------------
+    // Select good segments and remove unwanted segments based on Overlap/Alpha
     //---------------------------------------------------------------------------------------------------------
     std::vector<int> delete_segmentID;
     delete_segmentID.clear();
+
     for(int i=0; i<(int)temp_ThisIsBestSegment.size(); i++){
-      //std::cout << "temp i =  " << i<< std::endl;
-      for(int j=0; j<(int)temp_ThisIsBestSegment.size(); j++){
-        if(i==j) continue;
-        //std::cout << "temp j =  " << j<< std::endl;
-        double alpha[2] = {temp_ThisIsBestSegment_Diag.at(i).at(0).alpha, temp_ThisIsBestSegment_Diag.at(j).at(0).alpha};
-        //std::cout << "alpha[0]/alpha[1] =    " <<alpha[0]<<"/"<<alpha[1]<< std::endl;
-        double alpha_diff = 0.0;
-        double alpha_sigma = 0.0003199;//obtained from  "ev5_plot_AlphaDiagBestSegment"
-        if(alpha[0]*alpha[1] > 0){//both slopes are negitice or positive
-          alpha_diff = fabs(alpha[0]  - alpha[1]);
+        for(int j=0; j<(int)temp_ThisIsBestSegment.size(); j++){
+            if(i == j) continue;
+
+            // --- 1. Slope Difference Check ---
+            double alpha[2] = {temp_ThisIsBestSegment_Diag.at(i).at(0).alpha, temp_ThisIsBestSegment_Diag.at(j).at(0).alpha};
+            double alpha_diff = 0.0;
+            double alpha_sigma = 0.0003199; // Obtained from "ev5_plot_AlphaDiagBestSegment"
+
+            if(alpha[0]*alpha[1] > 0){ // Both slopes same sign
+                alpha_diff = fabs(alpha[0] - alpha[1]);
+            }
+            else { // Opposite signs
+                alpha_diff = fabs(fabs(alpha[0]) + fabs(alpha[1])); // Corrected logic for sign flip
+            }
+
+            // If slopes are too different, they are likely different tracks crossing, so don't merge/delete.
+            if(alpha_diff > alpha_sigma * 5) continue;
+
+            // --- 2. Calculate Overlap ---
+            double chiNDF[2] = {temp_ThisIsBestSegment_Diag.at(i).at(0).chiNDF, temp_ThisIsBestSegment_Diag.at(j).at(0).chiNDF};
+
+            // Note: Ensure we divide by the correct size.
+            // Using the size of the hit vector is safer for the fraction calculation.
+            int size_i = (int)temp_ThisIsBestSegment.at(i).size();
+            int size_j = (int)temp_ThisIsBestSegment.at(j).size();
+
+            int overlappedHits = 0;
+            for(int k=0; k < size_i; k++){
+                for(int l=0; l < size_j; l++){
+                    if(temp_ThisIsBestSegment.at(i).at(k).hitID == temp_ThisIsBestSegment.at(j).at(l).hitID) {
+                        overlappedHits++;
+                    }
+                }
+            }
+
+            double frac_i = (size_i > 0) ? (double)overlappedHits / size_i : 0.0;
+            double frac_j = (size_j > 0) ? (double)overlappedHits / size_j : 0.0;
+
+            // --- 3. The "More than 50% Mutual Overlap" Logic ---
+            if (frac_i > 0.5 && frac_j > 0.5) {
+
+                // Case A: Segment i has a higher shared fraction (it is "more covered" / shorter). Remove i.
+                if (frac_i > frac_j) {
+                    delete_segmentID.push_back(i);
+                    if(_debugLevel) std::cout << std::format("  -> Removing Seg {} (Frac {:.2f}) vs Seg {} (Frac {:.2f})\n", i, frac_i, j, frac_j);
+                }
+                // Case B: Segment j has a higher shared fraction. Remove j.
+                else if (frac_j > frac_i) {
+                    delete_segmentID.push_back(j);
+                     if(_debugLevel) std::cout << std::format("  -> Removing Seg {} (Frac {:.2f}) vs Seg {} (Frac {:.2f})\n", j, frac_j, i, frac_i);
+                }
+                // Case C: Exact same overlap fraction (likely same length). Use Chi2 tie-breaker.
+                else {
+                    if (chiNDF[0] > chiNDF[1]) { // i has worse (larger) Chi2
+                        delete_segmentID.push_back(i);
+                    } else { // j has worse Chi2
+                        delete_segmentID.push_back(j);
+                    }
+                }
+            }
+
         }
-        if(alpha[0]*alpha[1] < 0){//either slope is positive or negative
-          alpha[0] = fabs(alpha[0]);
-          alpha[1] = fabs(alpha[1]);
-          alpha_diff = alpha[0] + alpha[1];
-        }
-    //    if(alpha_diff > alpha_sigma*5) continue;
-        //std::cout << "alpha_diff =   " <<alpha_diff<< std::endl;
-        double chiNDF[2] = {temp_ThisIsBestSegment_Diag.at(i).at(0).chiNDF, temp_ThisIsBestSegment_Diag.at(j).at(0).chiNDF};
-        int TotalHitinSegments[2] = {(int)temp_ThisIsBestSegment_Diag.at(i).size(), (int)temp_ThisIsBestSegment_Diag.at(j).size()};
-        double fraction[2] = {0.0};
-        int overlappedHits = 0;
-        for(int k=0; k<(int)temp_ThisIsBestSegment.at(i).size(); k++){
-          for(int l=0; l<(int)temp_ThisIsBestSegment.at(j).size(); l++){
-            int hitID[2] = {temp_ThisIsBestSegment.at(i).at(k).hitID, temp_ThisIsBestSegment.at(j).at(l).hitID};
-            if(hitID[0] == hitID[1]) overlappedHits++;
-          }
-        }
-        fraction[0] = (double)overlappedHits/TotalHitinSegments[0];
-        fraction[1] = (double)overlappedHits/TotalHitinSegments[1];
-        //std::cout << "TotalHitinSegments[0]/[1] =  " <<TotalHitinSegments[0]<<"/"<<TotalHitinSegments[1]<<std::endl;
-        //std::cout << "overlappedHits =  " <<overlappedHits<<std::endl;
-        //std::cout << "fraction[0]/[1] =  " <<fraction[0]<<"/"<<fraction[1]<<std::endl;
-        if(alpha_diff > alpha_sigma*5) continue;
-        //(1) 2 segment are not identical but ComboHits are overlapped and can remove 1 segemnt
-        if(fraction[0] <= 0.3 and fraction[1]  >= 0.6){
-          delete_segmentID.push_back(i);
-        }
-        //(2) 2 segment are identical and ComboHits are overlapped so select only 1 segment
-        if(fraction[0] >= 0.7 and fraction[1]  >= 0.7){
-          if(chiNDF[0] < chiNDF[1]) delete_segmentID.push_back(j);
-          else delete_segmentID.push_back(i);
-        }
-      }
     }
-      //std::cout << "before removed delete_segmentID.size() = " << (int)delete_segmentID.size()<<std::endl;
-      // Sort the delete_segmentID vector in increasing order
-      std::sort(delete_segmentID.begin(), delete_segmentID.end());
-      //Remove duplicates
-      delete_segmentID.erase(std::unique(delete_segmentID.begin(), delete_segmentID.end()), delete_segmentID.end());
-      //std::cout << "after removed delete_segmentID.size() = " << (int)delete_segmentID.size()<<std::endl;
+
+    std::sort(delete_segmentID.begin(), delete_segmentID.end());
+    delete_segmentID.erase(std::unique(delete_segmentID.begin(), delete_segmentID.end()), delete_segmentID.end());
+
+    // Construct the Final Output List
     all_ThisIsBestSegment.clear();
     all_ThisIsBestSegment_Diag.clear();
+
     for(int i=0; i<(int)temp_ThisIsBestSegment.size(); i++){
-      int flag = 0;
-      for(int j=0; j<(int)delete_segmentID.size(); j++){
-        if(delete_segmentID[j] == i) flag = 1;
-      }
-      if(flag == 1) continue;
-      //std::cout << "hit_found = " << hit_found[i] <<std::endl;
-      all_ThisIsBestSegment.push_back(temp_ThisIsBestSegment.at(i));
-      all_ThisIsBestSegment_Diag.push_back(temp_ThisIsBestSegment_Diag.at(i));
+        int flag = 0;
+        for(int j=0; j<(int)delete_segmentID.size(); j++){
+            if(delete_segmentID[j] == i) flag = 1;
+        }
+        if(flag == 1) continue;
+
+        all_ThisIsBestSegment.push_back(temp_ThisIsBestSegment.at(i));
+        all_ThisIsBestSegment_Diag.push_back(temp_ThisIsBestSegment_Diag.at(i));
     }
-    //std::cout<<"ThisIsBestSegment size = "<<all_ThisIsBestSegment.size()<<std::endl;
-  }//end ev5_select_best_segments_step_06
+
+    // 3. PRINT FINAL STATE
+    printCurrentSegments("FINAL OUTPUT (AFTER OVERLAP REMOVAL)", all_ThisIsBestSegment);
+
+    // =====================================================================
+    // STEP 4: Resolve Shared Hits (The 06A Logic)
+    // =====================================================================
+    // This handles hits shared by distinct tracks that weren't merged/deleted above.
+
+    const double CHI2_NDF_CUT_FINAL = 5.0;
+    const double RATIO_CUT_FINAL    = 3.0;
+
+    // 1. Build the mapping for the survivors
+    std::unordered_map<int, std::set<int>> hitToSegments;
+    for (size_t i = 0; i < all_ThisIsBestSegment.size(); ++i) {
+        for (auto& h : all_ThisIsBestSegment[i]) {
+            hitToSegments[h.hitID].insert(i);
+        }
+    }
+
+    if (_debugLevel) {
+        std::cout << "\n[SharedHit-Fine] Starting Final Hit-Level Resolution...\n";
+    }
+
+    for (auto& kv : hitToSegments) {
+        if (kv.second.size() < 2) continue; // Only process hits shared by 2+ survivors
+
+        int hitIdx = kv.first;
+        std::set<int>& segSet = kv.second;
+
+        struct FinalCandidate {
+            int segIdx;
+            double chi2ndf;
+            double residual;
+        };
+        std::vector<FinalCandidate> goodCandidates;
+
+        if (_debugLevel) {
+            std::cout << std::format("\n  Refining Shared Hit {}:\n", hitIdx);
+            std::cout << "  Seg | Chi2/NDF | Resid (rad)\n";
+            std::cout << "  ----------------------------\n";
+        }
+
+        for (int segIdx : segSet) {
+            auto& seg = all_ThisIsBestSegment[segIdx];
+
+            // Perform fit to get current Alpha/Beta
+            findchisq_ver2(seg);
+            double this_chi2 = _lineFitter.chi2Dof();
+            double alpha     = _lineFitter.dydx();
+            double beta      = _lineFitter.y0();
+
+            auto it = std::find_if(seg.begin(), seg.end(),
+                                   [&](auto& h){ return h.hitID == hitIdx; });
+
+            if (it != seg.end()) {
+                double residual = std::abs(it->phi - (alpha * it->z + beta));
+
+                if (_debugLevel) {
+                    std::cout << std::format("  {:<3} | {:<8.2f} | {:.4f} {}\n",
+                                             segIdx, this_chi2, residual,
+                                             (this_chi2 >= CHI2_NDF_CUT_FINAL ? "(FAIL)" : ""));
+                }
+
+                if (this_chi2 < CHI2_NDF_CUT_FINAL) {
+                    goodCandidates.push_back({segIdx, this_chi2, residual});
+                }
+            }
+        }
+
+        // --- Decision Logic ---
+        if (goodCandidates.empty()) {
+            if (_debugLevel) {
+                std::cout << std::format("  RESULT for Hit {}: REMOVED from all segments (Zero candidates passed Chi2 cut).\n", hitIdx);
+            }
+            // Remove hit from all segments if none are good fits
+            for (int segIdx : segSet) {
+                auto& s = all_ThisIsBestSegment[segIdx];
+                auto& d = all_ThisIsBestSegment_Diag[segIdx];
+                s.erase(std::remove_if(s.begin(), s.end(), [&](auto& h){ return h.hitID == hitIdx; }), s.end());
+                d.erase(std::remove_if(d.begin(), d.end(), [&](auto& x){ return x.reference_point == hitIdx; }), d.end());
+            }
+            continue;
+        }
+
+        // Sort candidates by residual (best fit first)
+        // Sort candidates by residual (best fit first)
+        std::sort(goodCandidates.begin(), goodCandidates.end(), [](auto& a, auto& b){ return a.residual < b.residual; });
+
+        // --- New Robust Decision Logic (N > 2 Support) ---
+
+        // 1. Determine which segments are "Good Enough" to keep the hit
+        std::set<int> segmentsToKeep;
+
+        // The best candidate ALWAYS keeps the hit
+        int bestSegIdx = goodCandidates[0].segIdx;
+        double r0 = goodCandidates[0].residual;
+        segmentsToKeep.insert(bestSegIdx);
+
+        if (_debugLevel) {
+             std::cout << std::format("  RESULT for Hit {}: Winner is Seg {} (Resid {:.4f})\n", hitIdx, bestSegIdx, r0);
+        }
+
+        // Check the runners-up (indices 1 to N)
+        for (size_t i = 1; i < goodCandidates.size(); ++i) {
+            int currSegIdx = goodCandidates[i].segIdx;
+            double r_curr  = goodCandidates[i].residual;
+
+            // Calculate ratio relative to the winner
+            // Protect against divide-by-zero if perfect fit
+            double ratio = (r0 > 1e-9) ? (r_curr / r0) : 999.0;
+
+            if (ratio <= RATIO_CUT_FINAL) {
+                // This segment is close enough to the winner (Ambiguous). Keep it.
+                segmentsToKeep.insert(currSegIdx);
+                if (_debugLevel) {
+                    std::cout << std::format("    -> Seg {} is ambiguous (Ratio {:.2f} <= {}). Keeping hit.\n",
+                                             currSegIdx, ratio, RATIO_CUT_FINAL);
+                }
+            } else {
+                // This segment is significantly worse. Drop it.
+                // (Note: It is not added to segmentsToKeep)
+                if (_debugLevel) {
+                    std::cout << std::format("    -> Seg {} is too poor (Ratio {:.2f} > {}). Marking for removal.\n",
+                                             currSegIdx, ratio, RATIO_CUT_FINAL);
+                }
+            }
+        }
+
+        // 2. Execution of removal
+        // Iterate over ALL segments that originally claimed this hit (segSet).
+        // If a segment is NOT in 'segmentsToKeep', we remove the hit.
+        // This handles:
+        //   a. Segments that passed Chi2 but failed the Ratio cut.
+        //   b. Segments that failed the initial Chi2 cut (never made it to goodCandidates).
+        for (int segIdx : segSet) {
+            if (segmentsToKeep.find(segIdx) == segmentsToKeep.end()) {
+
+                // Remove hit from this segment
+                auto& s = all_ThisIsBestSegment[segIdx];
+                auto& d = all_ThisIsBestSegment_Diag[segIdx];
+
+                s.erase(std::remove_if(s.begin(), s.end(), [&](auto& h){ return h.hitID == hitIdx; }), s.end());
+                d.erase(std::remove_if(d.begin(), d.end(), [&](auto& x){ return x.reference_point == hitIdx; }), d.end());
+
+                if (_debugLevel) {
+                     // Optional verbose logging for removal
+                     // std::cout << std::format("       [Removed hit {} from Seg {}]\n", hitIdx, segIdx);
+                }
+            }
+        }
+
+        /*if (goodCandidates.empty()) {
+            // Remove hit from all segments if none are good fits
+            for (int segIdx : segSet) {
+                auto& s = all_ThisIsBestSegment[segIdx];
+                auto& d = all_ThisIsBestSegment_Diag[segIdx];
+                s.erase(std::remove_if(s.begin(), s.end(), [&](auto& h){ return h.hitID == hitIdx; }), s.end());
+                d.erase(std::remove_if(d.begin(), d.end(), [&](auto& x){ return x.reference_point == hitIdx; }), d.end());
+            }
+            continue;
+        }
+
+        std::sort(goodCandidates.begin(), goodCandidates.end(), [](auto& a, auto& b){ return a.residual < b.residual; });
+
+        int bestSegIdx = goodCandidates[0].segIdx;
+        bool makeExclusive = (goodCandidates.size() == 1) || (goodCandidates[1].residual / goodCandidates[0].residual > RATIO_CUT_FINAL);
+
+        for (int segIdx : segSet) {
+            if (makeExclusive && segIdx != bestSegIdx) {
+                // Remove from losers
+                auto& s = all_ThisIsBestSegment[segIdx];
+                auto& d = all_ThisIsBestSegment_Diag[segIdx];
+                s.erase(std::remove_if(s.begin(), s.end(), [&](auto& h){ return h.hitID == hitIdx; }), s.end());
+                d.erase(std::remove_if(d.begin(), d.end(), [&](auto& x){ return x.reference_point == hitIdx; }), d.end());
+            }
+        }*/
+
+    }
+
+    if (_debugLevel) {
+        printCurrentSegments("06 FINAL STATE (AFTER MACRO & MICRO CLEANING)", all_ThisIsBestSegment);
+    }
+
+} // end ev5_select_best_segments_step_06
+
 //-----------------------------------------------------------------------------
   PhiZSeedFinder::SegmentComp PhiZSeedFinder::compareSegments(const std::vector<ev5_HitsInNthStation>& seg1, const std::vector<ev5_HitsInNthStation>& seg2) {
     std::cout<<"compareSegments"<<std::endl;
@@ -3540,6 +5155,24 @@ void PhiZSeedFinder::findchisq(std::vector<ev5_HitsInNthStation> const& segment,
     chizphi = fitter.chi2Dof();
   }
 //-----------------------------------------------------------------------------
+void PhiZSeedFinder::findchisq_ver2(const std::vector<ev5_HitsInNthStation>& segment) {
+    // Use the class member fitter
+    _lineFitter.clear();
+
+    for (const auto& hit : segment) {
+        double z = hit.z;
+        double phi = hit.phi;
+
+        // Define error/weight (currently fixed at 0.1, but should ideally come from hit resolution)
+        double sigma = 0.1;
+        double weight = 1.0 / (sigma * sigma);
+
+        _lineFitter.addPoint(z, phi, weight);
+    }
+    // No return needed.
+    // The alpha, beta, and chi2 are now stored in _lineFitter state.
+}
+//-----------------------------------------------------------------------------
   void PhiZSeedFinder::ev5_select_best_segments_cleanup(std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment, std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag, double threshold_deltaphi){
     std::cout << "-----------------------------------" << std::endl;
     std::cout << " ev5_select_best_segments_cleanup  " << std::endl;
@@ -3600,613 +5233,730 @@ all_ThisIsBestSegment_Diag.swap(sortedSegmentsDiag);
     std::cout << "-----------------------------------" << std::endl;
 }
 // -------------------------------------------------------------------
-// Merge segments: each segment as reference in turn, last is standalone
-// Remove duplicates when merging
+// mergeSegmentsAll : "greedy first-match" -> "global best-pair" version
+// All pairs are evaluated first, then only the most consistent pair is
+// merged; the whole procedure is repeated until no pair is left.
 // -------------------------------------------------------------------
-void PhiZSeedFinder::mergeSegmentsAll(
-    std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment,
-    std::vector<std::vector<ev5_Segment>>& all_ThisIsBestSegment_Diag,
-    double thre_residual
-) {
-    std::cout << "mergeSegmentsAll" << std::endl;
-    int _phiZPlotCounter = 0;
-    int plotID = _phiZPlotCounter++;
 
-    //initialization
-   for (size_t segIdx = 0; segIdx < all_ThisIsBestSegment.size(); ++segIdx) {
-    for (auto &hit : all_ThisIsBestSegment[segIdx]) {
-        hit.nturn = 0;
-        hit.segmentIndex = segIdx;
+//-----------------------------------------------------------------------------
+// Pair evaluation: never modifies all_ThisIsBestSegment (side-effect free).
+// Returns true if the pair is a valid merge candidate.
+//
+// Structure (one step per stage, in this order):
+//   1. VETO-0  station overlap
+//   2. circle fit of the two segments together
+//   3. clean-up: drop hits until the circle chi2/ndf is acceptable
+//   4. refit the circle, recompute helixPhi about the common centre
+//   5. fit dphi/dz separately for ref and test
+//   6. VETO-1  are the two slopes compatible?
+//   7. VETO-2  extrapolate the ref line to the centre of the test segment and
+//              check that the test segment, shifted by n*2pi as a whole, lands
+//              on it within the combined error
+//   8. RANKING (only reached when the pair is mergeable): refit the merged
+//              segment as one line and store the numbers used to rank
+//              candidates against each other
+//
+// There is deliberately no absolute cut on the merged chi2/ndf: VETO-1 and
+// VETO-2 decide mergeability, and the merged chi2/ndf is used only to order
+// the surviving candidates.
+//
+// Debug output is controlled by _debugLevel:
+//    >0 : one summary line per pair, plus the reason for every rejection
+//    >1 : full step-by-step dump (circle fit, clean-up, both slope fits,
+//         every veto with its numbers and thresholds)
+//    >2 : per-hit dump of the merged segment
+//-----------------------------------------------------------------------------
+bool PhiZSeedFinder::evaluateMergePair(const std::vector<ev5_HitsInNthStation>& segRef,
+                                       const std::vector<ev5_Segment>&          diagRef,
+                                       const std::vector<ev5_HitsInNthStation>& segTest,
+                                       const std::vector<ev5_Segment>&          diagTest,
+                                       int refIdx, int testIdx,
+                                       ev5_MergeCandidate& cand) {
+
+  cand = ev5_MergeCandidate();
+  cand.refIdx     = refIdx;
+  cand.testIdx    = testIdx;
+  cand.nHitRefIn  = (int)segRef.size();
+  cand.nHitTestIn = (int)segTest.size();
+
+  const bool dbg  = (_debugLevel > 0);
+  const bool dbg2 = (_debugLevel > 1);
+  const bool dbg3 = (_debugLevel > 2);
+
+  std::ostringstream tag;
+  tag << "[evalPair " << std::setw(2) << refIdx << "-" << std::setw(2) << testIdx << "]";
+  const std::string T = tag.str();
+
+  auto reject = [&](const std::string& why) {
+    cand.valid        = false;
+    cand.rejectReason = why;
+    if (dbg) std::cout << T << "  REJECT : " << why << std::endl;
+    return false;
+  };
+
+  if (dbg2) {
+    std::cout << "\n" << T << " ======================================================" << std::endl;
+    std::cout << T << " nHit ref = " << segRef.size()
+              << " , nHit test = " << segTest.size() << std::endl;
+  }
+
+  if (segRef.empty() || segTest.empty())
+    return reject("empty segment");
+
+  //---------------------------------------------------------------------------
+  // Station / z ranges (context for the later messages)
+  //---------------------------------------------------------------------------
+  int    stRefMin = 9999, stRefMax = -1, stTstMin = 9999, stTstMax = -1;
+  double zRefLo = 1e9, zRefHi = -1e9, zTstLo = 1e9, zTstHi = -1e9;
+  for (const auto& h : segRef) {
+    stRefMin = std::min(stRefMin, h.station);  stRefMax = std::max(stRefMax, h.station);
+    zRefLo   = std::min(zRefLo,   h.z);        zRefHi   = std::max(zRefHi,   h.z);
+  }
+  for (const auto& h : segTest) {
+    stTstMin = std::min(stTstMin, h.station);  stTstMax = std::max(stTstMax, h.station);
+    zTstLo   = std::min(zTstLo,   h.z);        zTstHi   = std::max(zTstHi,   h.z);
+  }
+  if (dbg2) {
+    std::cout << std::fixed << std::setprecision(1)
+              << T << " ref  : station [" << stRefMin << "," << stRefMax << "]"
+              << "  z [" << zRefLo << "," << zRefHi << "]" << std::endl;
+    std::cout << T << " test : station [" << stTstMin << "," << stTstMax << "]"
+              << "  z [" << zTstLo << "," << zTstHi << "]" << std::endl;
+  }
+
+  //===========================================================================
+  // STEP 1 : VETO-0 - station overlap
+  //          Two segments sharing a station cannot come from the same track.
+  //===========================================================================
+  {
+    std::vector<int> shared;
+    for (const auto& hR : segRef)
+      for (const auto& hT : segTest)
+        if (hR.station == hT.station &&
+            std::find(shared.begin(), shared.end(), hR.station) == shared.end())
+          shared.push_back(hR.station);
+
+    if (!shared.empty()) {
+      std::ostringstream m;
+      m << "VETO-0 station overlap, n=" << shared.size() << " station(s) {";
+      for (size_t k = 0; k < shared.size(); ++k) m << (k ? "," : "") << shared[k];
+      m << "}";
+      return reject(m.str());
     }
-   }
-    _segmentHits.clear();
-    _segmentHits = all_ThisIsBestSegment;
-    int loop = 0;
-    int nSegmentsInTC = (int)all_ThisIsBestSegment.size();
-    std::cout << "nSegmentsInTC = " << nSegmentsInTC << std::endl;
-    if (nSegmentsInTC == 0) return;
-    bool didMerge = true;
-    while (didMerge) {
-      std::cout<<"didMerge loop = "<<loop<<std::endl;
-      loop++;
-      didMerge = false;
-      _segmentHits.clear();
-      _segmentHits = all_ThisIsBestSegment;
-      std::cout << "\n--- Dumping all_ThisIsBestSegment ---" << std::endl;
-      std::cout << "\n all_ThisIsBestSegment size = " << all_ThisIsBestSegment.size() << std::endl;
-      for (size_t i = 0; i < all_ThisIsBestSegment.size(); ++i) {
-          std::cout << " Segment " << i << " (#hits = "
-                    << all_ThisIsBestSegment[i].size() << ")" << std::endl;
-          for (size_t j = 0; j < all_ThisIsBestSegment[i].size(); ++j) {
-              const ev5_HitsInNthStation& hit = all_ThisIsBestSegment[i][j];
-              std::cout << "   No. " << j
-                        << " hitIndice = " << hit.hitIndice
-                        << " station = " << hit.station
-                        << " plane = "   << hit.plane
-                        << " face ="    << hit.face
-                        << " panel ="   << hit.panel
-                        << " x ="       << hit.x
-                        << " y ="       << hit.y
-                        << " z ="       << hit.z
-                        << " phi ="     << hit.phi
-                        << " hitID ="   << hit.hitID
-                        << " segmentIndex =" << hit.segmentIndex
-                        << " used ="    << hit.used
-                        << " nturn ="    << hit.nturn
-                        << std::endl;
-          }
+    if (dbg2) std::cout << T << " STEP1 VETO-0 station overlap : PASS" << std::endl;
+  }
+
+  // Local copies: everything below operates on temporaries only.
+  std::vector<ev5_HitsInNthStation> locRef  = segRef;
+  std::vector<ev5_HitsInNthStation> locTest = segTest;
+  std::vector<ev5_Segment>          locDRef = diagRef;
+  std::vector<ev5_Segment>          locDTest= diagTest;
+
+  for (auto& h : locRef ) { h.used = true; h.nturn = 0; }
+  for (auto& h : locTest) { h.used = true; h.nturn = 0; }
+
+  //===========================================================================
+  // STEP 2 : circle fit of both segments together
+  //          (flat weights first, then proper weights)
+  //===========================================================================
+  _circleFitter.clear();
+  for (const auto& h : locRef ) _circleFitter.addPoint(h.x, h.y, 0.1);
+  for (const auto& h : locTest) _circleFitter.addPoint(h.x, h.y, 0.1);
+  double xC = _circleFitter.x0();
+  double yC = _circleFitter.y0();
+  double rC = _circleFitter.radius();
+
+  if (dbg2)
+    std::cout << std::fixed << std::setprecision(3)
+              << T << " STEP2 circle (flat weights)   : xC=" << xC << " yC=" << yC
+              << " rC=" << rC << " chi2/ndf=" << _circleFitter.chi2DofCircle() << std::endl;
+
+  std::vector<ev5_HitsInNthStation> allHits;
+  allHits.insert(allHits.end(), locRef.begin(),  locRef.end());
+  allHits.insert(allHits.end(), locTest.begin(), locTest.end());
+
+  _circleFitter.clear();
+  for (auto& h : allHits) {
+    h.circleError2 = computeCircleError2_ver2(h.hitIndice, h.strawhits, xC, yC, rC);
+    _circleFitter.addPoint(h.x, h.y, 1.0 / h.circleError2);
+  }
+  xC = _circleFitter.x0();
+  yC = _circleFitter.y0();
+  rC = _circleFitter.radius();
+
+  if (dbg2)
+    std::cout << std::fixed << std::setprecision(3)
+              << T << " STEP2 circle (proper weights) : xC=" << xC << " yC=" << yC
+              << " rC=" << rC << " chi2/ndf=" << _circleFitter.chi2DofCircle()
+              << " nPoint=" << _circleFitter.qn() << std::endl;
+
+  //===========================================================================
+  // STEP 3 : clean-up - drop hits one at a time while the circle chi2/ndf
+  //          keeps improving
+  //===========================================================================
+  int nDropped = 0;
+  if (_circleFitter.qn() > 10 && _circleFitter.chi2DofCircle() > _mergeMaxChi2NDF) {
+    double chi2ndf = _circleFitter.chi2DofCircle();
+    if (dbg2)
+      std::cout << T << " STEP3 clean-up starts : chi2/ndf=" << chi2ndf
+                << " > " << _mergeMaxChi2NDF << std::endl;
+    while (chi2ndf > _mergeMaxChi2NDF) {
+      int    bestRemove = -1;
+      double bestChi2   = chi2ndf;
+      for (size_t i = 0; i < allHits.size(); ++i) {
+        if (!allHits[i].used) continue;
+        _circleFitter.clear();
+        for (size_t j = 0; j < allHits.size(); ++j) {
+          if (!allHits[j].used || i == j) continue;
+          _circleFitter.addPoint(allHits[j].x, allHits[j].y, 1.0 / allHits[j].circleError2);
+        }
+        if (_circleFitter.chi2DofCircle() < bestChi2) {
+          bestChi2   = _circleFitter.chi2DofCircle();
+          bestRemove = (int)i;
+        }
       }
-      std::cout << "\n--- Dumping all_ThisIsBestSegment_Diag ---" << std::endl;
-      for (size_t i = 0; i < all_ThisIsBestSegment_Diag.size(); ++i) {
-          std::cout << " SegmentDiag " << i << " (#entries = "
-                    << all_ThisIsBestSegment_Diag[i].size() << ")" << std::endl;
-          for (size_t j = 0; j < all_ThisIsBestSegment_Diag[i].size(); ++j) {
-              const ev5_Segment& seg = all_ThisIsBestSegment_Diag[i][j];
-              std::cout << "   No. " << j
-                        << " station="   << seg.station
-                        << " z="         << seg.z
-                        << " deltaphi="  << seg.deltaphi
-                        << " alpha="     << seg.alpha
-                        << " beta="      << seg.beta
-                        << " chiNDF="    << seg.chiNDF
-                        << " ref_point=" << seg.reference_point
-                        << " usedForFit="<< seg.usedforfit
-                        << std::endl;
-          }
-      }
-          for (size_t refIdx = 0; refIdx < all_ThisIsBestSegment.size(); ++refIdx) {
-              std::cout << "\n[mergeSegmentsAll] Reference segment = " << refIdx
-                        << " (#hits = " << all_ThisIsBestSegment[refIdx].size() << ")" << std::endl;
-              for (size_t testIdx = refIdx + 1; testIdx < all_ThisIsBestSegment.size(); ++testIdx) {
-                // === Decide whether to merge refIdx and testIdx ===
-                bool canMerge[3] = {false, false, false};
-                std::vector<ev5_HitsInNthStation> segmentHits;
-              std::cout << "\n[mergeSegmentsAll] Test Reference segment = " << testIdx
-                        << " (#hits = " << all_ThisIsBestSegment[testIdx].size() << ")" << std::endl;
-              //---------------------------------------
-              // circle fit: Step1 w/o correct weight
-              //---------------------------------------
-              _circleFitter.clear();
-              for (size_t i = 0; i < all_ThisIsBestSegment[refIdx].size(); i++) {
-                  double x  = all_ThisIsBestSegment[refIdx][i].x;
-                  double y  = all_ThisIsBestSegment[refIdx][i].y;
-                  double wP = 0.1;  // tentative value
-                  _circleFitter.addPoint(x, y, wP);
-              }
-              for (size_t i = 0; i < all_ThisIsBestSegment[testIdx].size(); i++) {
-                  double x  = all_ThisIsBestSegment[testIdx][i].x;
-                  double y  = all_ThisIsBestSegment[testIdx][i].y;
-                  double wP = 0.1;  // tentative value
-                  _circleFitter.addPoint(x, y, wP);
-              }
-              double xC = _circleFitter.x0();
-              double yC = _circleFitter.y0();
-              double rC = _circleFitter.radius();
-              //-------------------------------------------------------------------
-              // circle fit: Step2 w/ correct weight
-              //-------------------------------------------------------------------
-              _circleFitter.clear();
-              for (int idx : {refIdx, testIdx}) {
-                for (size_t i = 0; i < all_ThisIsBestSegment[idx].size(); i++) {
-                  int hitIndice = all_ThisIsBestSegment[idx][i].hitIndice;
-                  //all_ThisIsBestSegment[idx][i].segmentIndex = idx;
-                  int nStrawHits = all_ThisIsBestSegment[idx][i].strawhits;
-                  double circleError2 = computeCircleError2_ver2(hitIndice, nStrawHits, xC, yC, rC);
-                  all_ThisIsBestSegment[idx][i].circleError2 = circleError2;
-                  double x = all_ThisIsBestSegment[idx][i].x;
-                  double y = all_ThisIsBestSegment[idx][i].y;
-                  double wP = 1.0 / (circleError2);
-                  _circleFitter.addPoint(x, y, wP);
-                }
-                segmentHits.insert(segmentHits.end(), all_ThisIsBestSegment[idx].begin(), all_ThisIsBestSegment[idx].end());
-              }
-              for (auto &hit : segmentHits) hit.used = true;
-              xC = _circleFitter.x0();
-              yC = _circleFitter.y0();
-              rC = _circleFitter.radius();
-              //---------------------------------------
-              // circle fit: Step3 ciclefit clean up
-              //---------------------------------------
-              std::cout<<"Before clean up "<<std::endl;
-              std::cout<<"# of hits in Helix = "<<_circleFitter.qn()<<std::endl;
-              std::cout<<"xC/yC = "<<_circleFitter.x0()<<"/"<<_circleFitter.y0()<<std::endl;
-              std::cout<<"radius = "<<_circleFitter.radius()<<std::endl;
-              std::cout<<"phi/dfdz/chi2DofC/chi2DofLineC = "<<_circleFitter.phi0()<<"/"<<_circleFitter.dfdz()<<"/"<<_circleFitter.chi2DofCircle()<<"/"<<_circleFitter.chi2DofLine()<<std::endl;
-              if(_circleFitter.qn() > 10 and _circleFitter.chi2DofCircle() > 5.0){
-              std::vector<cleanup> remove_hits;
-              double chi2ndf = _circleFitter.chi2DofCircle();
-              while(chi2ndf > 5.0){
-                int remove_hitIndex;
-                int remove_hitIndice;
-                int find = 0;
-                for(size_t i=0; i<segmentHits.size(); i++){
-                  if(segmentHits[i].used == false) continue;
-                  _circleFitter.clear();
-                  for(size_t j=0; j<segmentHits.size(); j++){
-                    if(segmentHits[j].used == false) continue;
-                    if(i==j) continue;
-                    int hitIndice = segmentHits[j].hitIndice;
-                    int nStrawHits = segmentHits[j].strawhits;
-                    double circleError2 = computeCircleError2_ver2(hitIndice, nStrawHits, xC, yC, rC);
-                    segmentHits[j].circleError2 = circleError2;
-                    double x = segmentHits[j].x;
-                    double y = segmentHits[j].y;
-                    double wP = 1.0 / (circleError2);
-                    _circleFitter.addPoint(x, y, wP);
-                  }
-                  if(_circleFitter.chi2DofCircle() < chi2ndf) {
-                    remove_hitIndex = i;
-                    remove_hitIndice = segmentHits[i].hitIndice;
-                    chi2ndf = _circleFitter.chi2DofCircle();
-                    find++;
-                  std::cout<<"Indice :"<<i<<"/"<<"chi2ndf: "<<_circleFitter.chi2DofCircle()<<std::endl;
-                  std::cout<<"find :"<<find<<std::endl;
-                  }
-                }
-              std::cout<<"find :"<<find<<std::endl;
-              //check if chi2ndf is improved or not
-              if(find > 0){
-                cleanup circlefit;
-                circlefit.tcindex = remove_hitIndex;
-                circlefit.tcindice = remove_hitIndice;
-                circlefit.chi2ndf = chi2ndf;
-                remove_hits.push_back(circlefit);
-                segmentHits[remove_hitIndex].used = false;
-              //recalculate the circle parameter
-              //Level 1:
-              _circleFitter.clear();
-              for(size_t i=0; i<segmentHits.size(); i++){
-              if(segmentHits[i].used == false) continue;
-                double x = segmentHits[i].x;
-                double y = segmentHits[i].y;
-                double wP = 1.0 / (segmentHits[i].circleError2);
-                _circleFitter.addPoint(x, y, wP);
-              }
-              chi2ndf = _circleFitter.chi2DofCircle();
-              xC = _circleFitter.x0();
-              yC = _circleFitter.y0();
-              rC = _circleFitter.radius();
-              //std::cout<<"remove_hitIndex :"<< remove_hitIndex<<"/"<<"chi2ndf: "<<chi2ndf<<std::endl;
-              if(chi2ndf < 5.0) break;
-              if((segmentHits.size() - remove_hits.size()) <= 10) break;
-              }else{
-              break;
-              }
-              }
-              //std::sort(remove_hits.begin(), remove_hits.end(), [](const cleanup& a, const cleanup& b) { return a.chi2ndf < b.chi2ndf; } );
-              std::cout<<"==================================="<<std::endl;
-              std::cout<<"clean-up"<<std::endl;
-              std::cout<<"==================================="<<std::endl;
-              for(size_t i=0; i<remove_hits.size(); i++){
-              int tcindex = remove_hits.at(i).tcindex;
-              int tcdice = remove_hits.at(i).tcindice;
-              double chi2ndf_ = remove_hits.at(i).chi2ndf;
-              std::cout<<"No: "<<tcindex<< ", Indice = "<< tcdice <<", chi2DofCircle (w/o this hit) = "<<chi2ndf_<<std::endl;
-              }
-              //Step4: iterate over selected combohits and recalculate the weight value and refit again
-              //recalculate the weight
-              std::cout<<"==================================="<<std::endl;
-              std::cout<<"After clean-up"<<std::endl;
-              std::cout<<"==================================="<<std::endl;
-              _circleFitter.clear();
-              int count = 0;
-              for(size_t i=0; i<segmentHits.size(); i++){
-              if(segmentHits[i].used == false) continue;
-              double x = segmentHits[i].x;
-              double y = segmentHits[i].y;
-              double wP = 1.0 / (segmentHits[i].circleError2);
-              _circleFitter.addPoint(x, y, wP);
-              count++;
-              }
-              std::cout<<"Hits used in circle: "<<count<< ", chi2DofCircle = "<<_circleFitter.chi2DofCircle()<<std::endl;
-              // xC = _circleFitter.x0();
-              // yC = _circleFitter.y0();
-              // _circleFitter.clear();
-              // for(size_t i=0; i<nComboHitsInSegment; i++){
-              //   if(_tcHits[i].used == false) continue;
-              //   computeCircleError2(i, xC, yC);
-              //   double x = _tcHits.at(i).x;
-              //   double y = _tcHits.at(i).y;
-              //   double wP = 1.0 / (_tcHits[i].circleError2);
-              //   _circleFitter.addPoint(x, y, wP);
-              //   _tcHits[i].used = true;
-              // }
-              }
-              // === STEP 0: Backup original data ===
-              auto backup_all_ThisIsBestSegment      = all_ThisIsBestSegment;
-              auto backup_all_ThisIsBestSegment_Diag = all_ThisIsBestSegment_Diag;
-              // === STEP 1: Remove hits ===
-              for (int idx : {refIdx, testIdx}) {
-                  auto& segment     = all_ThisIsBestSegment[idx];
-                  auto& segmentDiag = all_ThisIsBestSegment_Diag[idx];
-                  if (segment.size() != segmentDiag.size()) {
-                      std::cerr << "Warning: segment size mismatch for idx "
-                                << idx << " (" << segment.size() << " vs "
-                                << segmentDiag.size() << ")\n";
-                  }
-                  auto itSeg  = segment.begin();
-                  auto itDiag = segmentDiag.begin();
-                  while (itSeg != segment.end() && itDiag != segmentDiag.end()) {
-                      bool toRemove = false;
-                      for (const auto& tcHit : segmentHits) {
-                          if (!tcHit.used && tcHit.hitIndice == itSeg->hitIndice) {
-                              std::cout << "Removing hitIndice = " << itSeg->hitIndice
-                                        << " from segment " << idx << std::endl;
-                              toRemove = true;
-                              break;
-                          }
-                      }
-                      if (toRemove) {
-                          itSeg  = segment.erase(itSeg);
-                          itDiag = segmentDiag.erase(itDiag);
-                      } else {
-                          ++itSeg;
-                          ++itDiag;
-                      }
-                  }
-              }
-              _segmentHits.clear();
-              _segmentHits = all_ThisIsBestSegment;
-              //for only plot
-              tcHitsFill(refIdx);
-              tcHitsFill_Add(testIdx);
-              //plot_XVsY(refIdx, testIdx, "mergeSegmentsAll_step1", xC, yC, rC);
-              //---------------------------------------
-              // refIdx hits: compute helix phi
-              //---------------------------------------
-              for (size_t i = 0; i < segmentHits.size(); i++) {
-                  if(segmentHits[i].used == false) continue;
-                  int hitIndice = segmentHits[i].hitIndice;
-                  double helixPhi = 0.0;
-                  double helixPhiError2 = 0.0;
-                  computeHelixPhi_ver2(hitIndice, xC, yC, helixPhi, helixPhiError2);
-                  segmentHits[i].helixPhi = helixPhi;
-                  segmentHits[i].helixPhiError2 = helixPhiError2;
-                    std::cout << "refIdx  = " << refIdx
-                    << " | index = " << i
-                    << " | hitIndice = " << segmentHits[i].hitIndice
-                    << " | wireErr = " << _data.chcol->at(hitIndice).wireRes()
-                    << " | x = " << segmentHits[i].x
-                    << " | y = " << segmentHits[i].y
-                    << " | z = " << segmentHits[i].z
-                    << " | phi = " << segmentHits[i].phi
-                    << " | helixPhi = " << segmentHits[i].helixPhi
-                    << " | helixPhiError2= " << segmentHits[i].helixPhiError2
-                    << " | sqrt(helixPhiError2) = " << sqrt(segmentHits[i].helixPhiError2)
-                    << std::endl;
-                   for (size_t j = 0; j < all_ThisIsBestSegment[refIdx].size(); j++) {
-                      if(hitIndice != all_ThisIsBestSegment[refIdx][j].hitIndice) continue;
-                      all_ThisIsBestSegment[refIdx][j].helixPhi = helixPhi;
-                      all_ThisIsBestSegment[refIdx][j].helixPhiError2 = helixPhiError2;
-                    }
-                    for (size_t j = 0; j < all_ThisIsBestSegment[testIdx].size(); j++) {
-                      if(hitIndice != all_ThisIsBestSegment[testIdx][j].hitIndice) continue;
-                      all_ThisIsBestSegment[testIdx][j].helixPhi = helixPhi;
-                      all_ThisIsBestSegment[testIdx][j].helixPhiError2 = helixPhiError2;
-                    }
-              }
-              _segmentHits.clear();
-              _segmentHits = all_ThisIsBestSegment;
-              // slope value for reference
-              double slope_alpha = 0.0;
-              double slope_alphaError = 0.0;
-              double slope_beta  = 0.0;
-              double slope_betaError  = 0.0;
-              double ChiNDF      = 0.0;
-              std::cout<<"didMerge loop = "<<loop<<std::endl;
-              std::cout<<"refIdx = "<<refIdx<<std::endl;
-              ev5_fit_slope_ver4(refIdx, slope_alpha, slope_alphaError, slope_beta, slope_betaError, ChiNDF);
-              //for only plot
-              tcHitsFill(refIdx);
-              std::cout<<"refIdx = "<<refIdx<<std::endl;
-              //plot_PhiVsZ_forSegment_ver2(refIdx, testIdx, slope_alpha, slope_beta, ChiNDF);
-              std::cout << std::fixed << std::setprecision(10);
-              std::cout<<"refIdx = "<<refIdx<<std::endl;
-              std::cout << "slope_alpha :"<< slope_alpha <<" +/- " << slope_alphaError <<std::endl;
-              std::cout << "slope_beta :"<< slope_beta <<" +/- " << slope_betaError <<std::endl;
-              std::cout << "ChiNDF : " << ChiNDF << std::endl;
-              // slope value for test
-              double test_slope_alpha = 0.0;
-              double test_slope_alphaError = 0.0;
-              double test_slope_beta  = 0.0;
-              double test_slope_betaError  = 0.0;
-              double test_ChiNDF      = 0.0;
-              std::cout<<"didMerge loop = "<<loop<<std::endl;
-              std::cout<<"testIdx = "<<testIdx<<std::endl;
-              ev5_fit_slope_ver4(testIdx, test_slope_alpha, test_slope_alphaError, test_slope_beta, test_slope_betaError, test_ChiNDF);
-              //for only plot
-              tcHitsFill(testIdx);
-              plot_PhiVsZ_forSegment_ver2(testIdx, refIdx, test_slope_alpha, test_slope_beta, test_ChiNDF);
-              std::cout<<"testIdx = "<<testIdx<<std::endl;
-              std::cout << "slope_alpha :"<< test_slope_alpha <<" +/- " << test_slope_alphaError <<std::endl;
-              std::cout << "slope_beta :"<< test_slope_beta <<" +/- " << test_slope_betaError <<std::endl;
-              std::cout << "ChiNDF : " << test_ChiNDF << std::endl;
-              //---------------------------------------
-              // slope difference method
-              //---------------------------------------
-              /*double alpha_diff = 0.0;
-              double alpha_sigma = 0.0003199;
-              if (slope_alpha * test_slope_alpha > 0)
-                alpha_diff = fabs(slope_alpha - test_slope_alpha);
-              else{
-                alpha_diff = fabs(slope_alpha) + fabs(test_slope_alpha);
-              }
-              std::cout << "alpha_diff = "<< alpha_diff <<std::endl;
-              std::cout << "alpha_sigma*5 = "<< alpha_sigma * 5 <<std::endl;
-              if (alpha_diff > alpha_sigma * 5) continue;
-              */
-              double alpha_sigma = 0.0003199;
-              double alpha_diff = (slope_alpha * test_slope_alpha > 0)
-                      ? std::fabs(slope_alpha - test_slope_alpha)
-                      : std::fabs(slope_alpha) + std::fabs(test_slope_alpha);
-              double combined_alpha_error = std::sqrt(
-                  slope_alphaError * slope_alphaError +
-                  test_slope_alphaError * test_slope_alphaError
-              );
-              // prevent division-by-zero / unrealistically small combined error
-              const double min_combined_error = 1e-12;
-              if (combined_alpha_error < min_combined_error) combined_alpha_error = min_combined_error;
-              double empirical_threshold = alpha_sigma * 5.0;
-              double statistical_threshold = 5.0 * combined_alpha_error;
-              // pick the more conservative (larger) threshold
-              double threshold = std::max(empirical_threshold, statistical_threshold);
-              if (alpha_diff > threshold) {
-                  // Not compatible -> skip/continue
-                  //continue;
-                  canMerge[0] = false;
-              }
-              else canMerge[0] = true;
-              // ok to merge
-              //Pure statistical test (recommended if fit errors are trusted)
-              /*double combined_alpha_error = std::sqrt(
-              slope_alphaError * slope_alphaError +
-                  test_slope_alphaError * test_slope_alphaError
-              );
-              const double min_err = 1e-12;
-              if (combined_alpha_error < min_err) combined_alpha_error = min_err;
-              double Z = alpha_diff / combined_alpha_error; // # of sigma
-              if (Z > 5.0) continue; // require compatibility within 5 sigma
-              // optionally still check empirical threshold:
-              // if (alpha_diff > alpha_sigma*5.0) continue;
-              */
-              std::cout << std::fixed << std::setprecision(6)
-              << "alpha_diff=" << alpha_diff
-              << " combined_err=" << combined_alpha_error
-              << " stat_thresh=" << statistical_threshold
-              << " empirical_thresh=" << empirical_threshold
-              << " chosen_thresh=" << threshold
-              << " Z=" << alpha_diff / combined_alpha_error
-              << std::endl;
-              //---------------------------------------
-              // station overlap check
-              //---------------------------------------
-              bool station_overlap = false;
-              for (auto& hitRef : all_ThisIsBestSegment[refIdx]) {
-                for (auto& hitTest : all_ThisIsBestSegment[testIdx]) {
-                       if (hitRef.station == hitTest.station) {
-                           station_overlap = true;
-                           break;
-                       }
-                }
-                if (station_overlap) break;
-              }
-              if (station_overlap) canMerge[1] = false;
-              else canMerge[1] = true;
-              //---------------------------------------
-              // slope intercept method: 1
-              //---------------------------------------
-                  // Compute difference after 2pi correction
-             /*     double deltaPhi = slope_beta - test_slope_beta;
-                  int deltaCorrection = std::round(deltaPhi / (2 * M_PI));
-                  double beta_aligned = test_slope_beta + deltaCorrection * 2 * M_PI;
-                  // Absolute beta difference
-                  double beta_diff = std::fabs(slope_beta - beta_aligned);
-                  // Combine uncertainties
-                  double combined_beta_error = std::sqrt(
-                      slope_betaError * slope_betaError +
-                      test_slope_betaError * test_slope_betaError
-                  );
-                  // Avoid divide-by-zero
-                  if (combined_beta_error < 1e-12)
-                      combined_beta_error = 1e-12;
-                  // Define thresholds
-                  double empirical_threshold_beta = 0.4; //tentative value
-                  double statistical_threshold_beta = 5.0 * combined_beta_error;
-                  // Pick the more conservative (larger) threshold
-                  double beta_threshold = std::max(empirical_threshold_beta, statistical_threshold_beta);
-                  // Decision
-                  canMerge = (beta_diff <= beta_threshold);
-                  // Optional: print diagnostic info
-                  std::cout << std::fixed << std::setprecision(6)
-                            << "refIdx=" << refIdx
-                            << " testIdx=" << testIdx
-                            << " | beta_diff=" << beta_diff
-                            << " | combined_err=" << combined_beta_error
-                            << " | threshold=" << beta_threshold
-                            << " | (emp=" << empirical_threshold_beta
-                            << ", stat=" << statistical_threshold_beta << ")"
-                            << " Z=" << beta_diff / combined_beta_error
-                            << std::endl;
-                  */
-              //---------------------------------------
-              // slope intercept method: 2
-              //---------------------------------------
-              //---------------------------------------
-              // Predicted phi consistency check
-              //---------------------------------------
-              // Compute difference after 2pi correction
-              double deltaPhi = slope_beta - test_slope_beta;
-              int deltaCorrection = std::round(deltaPhi / (2 * M_PI));
-              std::cout<<"deltaCorrection  = "<< deltaCorrection <<std::endl;
-              test_slope_beta = test_slope_beta + deltaCorrection * 2 * M_PI;
-              double z_test = 0.0;
-              for (size_t i = 0; i < all_ThisIsBestSegment[testIdx].size(); i++) {
-                z_test = z_test + all_ThisIsBestSegment[testIdx][i].z;
-              }
-              z_test = z_test/(int)all_ThisIsBestSegment[testIdx].size();
-              std::cout<<"z_test = "<< z_test <<std::endl;
-              // Predicted phi from ref segment at z of test segment
-              double phi_pred = slope_alpha * z_test + slope_beta;
-              double phi_obs  = test_slope_alpha * z_test + test_slope_beta;
-              // Normalize to [-pi, pi] to handle wrap-around
-              double delta_phi = phi_pred - phi_obs;
-              if (delta_phi > M_PI)  delta_phi -= 2 * M_PI;
-              if (delta_phi < -M_PI) delta_phi += 2 * M_PI;
-              // Uncertainty propagation
-              double phi_pred_err = std::sqrt(
-                  (z_test * z_test * slope_alphaError * slope_alphaError) +
-                  (slope_betaError * slope_betaError)
-              );
-              double phi_obs_err = std::sqrt(
-                  (z_test * z_test * test_slope_alphaError * test_slope_alphaError) +
-                  (test_slope_betaError * test_slope_betaError)
-              );
-              double combined_phi_err = std::sqrt(phi_pred_err * phi_pred_err +
-                                                 phi_obs_err * phi_obs_err);
-              double Z = std::fabs(delta_phi) / (combined_phi_err + 1e-12);
-              // Define thresholds
-              double empirical_threshold_phi = 0.4;  // radians (example)
-              double statistical_threshold_phi = 5.0 * combined_phi_err;
-              double phi_threshold = std::max(empirical_threshold_phi, statistical_threshold_phi);
-              // Decision
-              canMerge[2] = (fabs(delta_phi) <= phi_threshold);
-              // Diagnostic printout
-              // Diagnostic printout
-std::cout << "phi_pred = " << phi_pred << std::endl;
-std::cout << "phi_obs  = " << phi_obs << std::endl;
-std::cout << "delta_phi = " << delta_phi << std::endl;
-std::cout << "phi_pred_err = " << phi_pred_err << std::endl;
-std::cout << "phi_obs_err  = " << phi_obs_err << std::endl;
-std::cout << "combined_phi_err = " << combined_phi_err << std::endl;
-std::cout << "empirical_threshold_phi = " << empirical_threshold_phi << std::endl;
-std::cout << "statistical_threshold_phi = " << statistical_threshold_phi << std::endl;
-std::cout << "phi_threshold = " << phi_threshold << std::endl;
-std::cout << "z(delta_phi/combined_err) = " << Z << std::endl;
-std::cout << "canMerge[0] = " << (canMerge[0] ? "true" : "false") << std::endl;
-std::cout << "canMerge[1] = " << (canMerge[1] ? "true" : "false") << std::endl;
-std::cout << "canMerge[2] = " << (canMerge[2] ? "true" : "false") << std::endl;
-
-                  //shift 2 pi for
-                  if (1 == canMerge[0] * canMerge[1] * canMerge[2]) {
-                    for (size_t i = 0; i < all_ThisIsBestSegment[testIdx].size(); i++) {
-                      all_ThisIsBestSegment[testIdx][i].nturn = deltaCorrection;
-                    }
-                  }
-
-// =======================================================
-// DEBUG: Phi vs Z plot BEFORE merge decision
-// =======================================================
-
-// Increment global plot ID (never decreases)
-    _phiZPlotCounter++;
-    plotID = _phiZPlotCounter++;
-// Use original segmentIndex for stable labeling
-//int refSegLabel  = all_ThisIsBestSegment[refIdx].front().segmentIndex;
-//int testSegLabel = all_ThisIsBestSegment[testIdx].front().segmentIndex;
-
-  _SSegmentHits = all_ThisIsBestSegment;
-// Plot ref segment
-plot_PhiVsZ_forSegment_debug(
-    refIdx,
-    testIdx,
-    slope_alpha,
-    slope_beta,
-    ChiNDF,
-    plotID,
-    "REF (before decision)",
-    false   // not merged yet
-);
-
-    plotID = _phiZPlotCounter++;
-// Plot test segment
-plot_PhiVsZ_forSegment_debug(
-    testIdx,
-    refIdx,
-    test_slope_alpha,
-    test_slope_beta,
-    test_ChiNDF,
-    plotID,
-    "TEST (before decision)",
-    false
-);
-
-
-                  // ===== merge testIdx into refIdx =====
-                  if (1 == canMerge[0] * canMerge[1] * canMerge[2]) {
-                    std::cout << "   --> Merged testIdx " << testIdx
-                            << " into refIdx " << refIdx << std::endl;
-                // merge directly into refIdx
-                all_ThisIsBestSegment[refIdx].insert(
-                    all_ThisIsBestSegment[refIdx].end(),
-                    all_ThisIsBestSegment[testIdx].begin(),
-                    all_ThisIsBestSegment[testIdx].end()
-                );
-                all_ThisIsBestSegment_Diag[refIdx].insert(
-                    all_ThisIsBestSegment_Diag[refIdx].end(),
-                    all_ThisIsBestSegment_Diag[testIdx].begin(),
-                    all_ThisIsBestSegment_Diag[testIdx].end()
-                );
-                // remove merged segment
-                all_ThisIsBestSegment.erase(all_ThisIsBestSegment.begin() + testIdx);
-                all_ThisIsBestSegment_Diag.erase(all_ThisIsBestSegment_Diag.begin() + testIdx);
-                std::cout << "   --> merged " << testIdx << " into " << refIdx << std::endl;
-                didMerge = true;
-                // restart because the vectors changed
-                goto restartLoop;
-              }
-                // === STEP 3: If processing failed, restore backup ===
-                if (0 == canMerge[0] * canMerge[1] * canMerge[2]) {
-                  std::cout << "Selection failed. Restoring original hit segments...\n";
-                  all_ThisIsBestSegment      = backup_all_ThisIsBestSegment;
-                  all_ThisIsBestSegment_Diag = backup_all_ThisIsBestSegment_Diag;
-                }
-            }
-          }
-        // no merge found in this pass
+      if (bestRemove < 0) {
+        if (dbg2)
+          std::cout << T << " STEP3 clean-up stops : no single hit improves chi2/ndf ("
+                    << chi2ndf << ")" << std::endl;
         break;
-        restartLoop:
-          std::cout << "[mergeSegmentsAll] Done. Total candidates = "
-              << all_ThisIsBestSegment.size() << std::endl;
-            // For ev5_HitsInNthStation segments
-        for (auto &seg : all_ThisIsBestSegment) {
-            std::sort(seg.begin(), seg.end(),
-                      [](const ev5_HitsInNthStation& a, const ev5_HitsInNthStation& b) {
-                          return a.z < b.z; // ascending
-                      });
-        }
-        // For ev5_Segment segments
-        for (auto &seg : all_ThisIsBestSegment_Diag) {
-            std::sort(seg.begin(), seg.end(),
-                      [](const ev5_Segment& a, const ev5_Segment& b) {
-                          return a.z < b.z; // ascending
-                      });
-        }
-        //break;
-        //if(loop == 2) break;
-        continue;
+      }
+      allHits[bestRemove].used = false;
+      ++nDropped;
+      if (dbg2)
+        std::cout << std::fixed << std::setprecision(3)
+                  << T << " STEP3   drop hit " << allHits[bestRemove].hitIndice
+                  << " (station " << allHits[bestRemove].station
+                  << ", from " << (bestRemove < (int)locRef.size() ? "ref" : "test")
+                  << ") chi2/ndf " << chi2ndf << " -> " << bestChi2 << std::endl;
+      _circleFitter.clear();
+      for (auto& h : allHits) {
+        if (!h.used) continue;
+        h.circleError2 = computeCircleError2_ver2(h.hitIndice, h.strawhits, xC, yC, rC);
+        _circleFitter.addPoint(h.x, h.y, 1.0 / h.circleError2);
+      }
+      chi2ndf = _circleFitter.chi2DofCircle();
+      xC = _circleFitter.x0();
+      yC = _circleFitter.y0();
+      rC = _circleFitter.radius();
+      if (chi2ndf < _mergeMaxChi2NDF) {
+        if (dbg2) std::cout << T << " STEP3 clean-up done : chi2/ndf=" << chi2ndf << std::endl;
+        break;
+      }
+      if (_circleFitter.qn() <= 10) {
+        if (dbg2) std::cout << T << " STEP3 clean-up stops : only " << _circleFitter.qn()
+                            << " hits left" << std::endl;
+        break;
+      }
     }
+  }
+  else if (dbg2) {
+    std::cout << T << " STEP3 clean-up skipped (nPoint=" << _circleFitter.qn()
+              << ", chi2/ndf=" << _circleFitter.chi2DofCircle() << ")" << std::endl;
+  }
+
+  const int nUsed = (int)_circleFitter.qn();
+  cand.nDropped   = nDropped;
+  if (nUsed < 5) {
+    std::ostringstream m;
+    m << "too few hits survive the circle clean-up (" << nUsed << " < 5, dropped " << nDropped << ")";
+    return reject(m.str());
+  }
+
+  //===========================================================================
+  // STEP 4 : final circle parameters, then recompute helixPhi about the
+  //          common circle centre
+  //===========================================================================
+  cand.xC = xC;  cand.yC = yC;  cand.rC = rC;
+  cand.ndf_circle     = std::max(1.0, (double)(nUsed - 3));
+  cand.chi2ndf_circle = _circleFitter.chi2DofCircle();
+  cand.chi2_circle    = cand.chi2ndf_circle * cand.ndf_circle;
+  cand.fDropped       = (double)nDropped / (double)allHits.size();
+
+  if (dbg2)
+    std::cout << std::fixed << std::setprecision(3)
+              << T << " STEP4 circle result : nUsed=" << nUsed << " nDropped=" << nDropped
+              << " chi2/ndf_circle=" << cand.chi2ndf_circle
+              << " R=" << rC << std::endl;
+
+  // Remove the dropped hits from the local segments.
+  auto pruneSegment = [&](std::vector<ev5_HitsInNthStation>& seg,
+                          std::vector<ev5_Segment>& diag) {
+    auto itS = seg.begin();
+    auto itD = diag.begin();
+    while (itS != seg.end()) {
+      bool drop = false;
+      for (const auto& h : allHits)
+        if (!h.used && h.hitIndice == itS->hitIndice) { drop = true; break; }
+      if (drop) {
+        itS = seg.erase(itS);
+        if (itD != diag.end()) itD = diag.erase(itD);
+      } else {
+        ++itS;
+        if (itD != diag.end()) ++itD;
+      }
+    }
+  };
+  pruneSegment(locRef,  locDRef);
+  pruneSegment(locTest, locDTest);
+
+  cand.nHitRef  = (int)locRef.size();
+  cand.nHitTest = (int)locTest.size();
+
+  if (locRef.size() < 2 || locTest.size() < 2) {
+    std::ostringstream m;
+    m << "segment shrank below 2 hits after clean-up (ref=" << locRef.size()
+      << ", test=" << locTest.size() << ")";
+    return reject(m.str());
+  }
+
+  auto recomputeHelixPhi = [&](std::vector<ev5_HitsInNthStation>& seg) {
+    for (auto& h : seg) {
+      double hPhi = 0.0, hPhiErr2 = 0.0;
+      computeHelixPhi_ver2(h.hitIndice, xC, yC, hPhi, hPhiErr2);
+      h.helixPhi       = hPhi;
+      h.helixPhiError2 = hPhiErr2;
+    }
+  };
+  recomputeHelixPhi(locRef);
+  recomputeHelixPhi(locTest);
+
+  if (dbg2)
+    std::cout << std::fixed << std::setprecision(4)
+              << T << " STEP4 helixPhi recomputed about (" << xC << "," << yC << ")"
+              << std::endl;
+
+  //===========================================================================
+  // STEP 5 : fit dphi/dz separately for ref and test
+  //          ev5_fit_slope_ver5 reads the member _segmentHits by index, so a
+  //          scratch container is swapped in and restored afterwards.
+  //===========================================================================
+  std::vector<std::vector<ev5_HitsInNthStation>> saved_segmentHits = _segmentHits;
+
+  auto sortByZ = [](std::vector<ev5_HitsInNthStation>& v) {
+    std::sort(v.begin(), v.end(),
+              [](const ev5_HitsInNthStation& a, const ev5_HitsInNthStation& b) { return a.z < b.z; });
+  };
+  sortByZ(locRef);
+  sortByZ(locTest);
+
+  _segmentHits.clear();
+  _segmentHits.push_back(locRef);    // index 0
+  _segmentHits.push_back(locTest);   // index 1
+
+  double aR = 0, aRe = 0, bR = 0, bRe = 0, cR = 0;
+  double aT = 0, aTe = 0, bT = 0, bTe = 0, cT = 0;
+  ev5_fit_slope_ver5(0, aR, aRe, bR, bRe, cR);
+  ev5_fit_slope_ver5(1, aT, aTe, bT, bTe, cT);
+
+  cand.alphaRef  = aR;  cand.alphaRefErr  = aRe;  cand.chi2ndfRef  = cR;
+  cand.alphaTest = aT;  cand.alphaTestErr = aTe;  cand.chi2ndfTest = cT;
+
+  if (dbg2) {
+    std::cout << std::scientific << std::setprecision(4)
+              << T << " STEP5 ref  fit : alpha=" << aR << " +- " << aRe
+              << "  beta=" << bR << " +- " << bRe
+              << std::fixed << std::setprecision(3)
+              << "  chi2/ndf=" << cR << std::endl;
+    std::cout << std::scientific << std::setprecision(4)
+              << T << " STEP5 test fit : alpha=" << aT << " +- " << aTe
+              << "  beta=" << bT << " +- " << bTe
+              << std::fixed << std::setprecision(3)
+              << "  chi2/ndf=" << cT << std::endl;
+  }
+
+  //===========================================================================
+  // STEP 6 : VETO-1 - are the two slopes compatible?
+  //===========================================================================
+  const double alpha_sigma = 0.0003199;                 // empirical value
+  double alpha_diff = (aR * aT > 0) ? std::fabs(aR - aT)
+                                    : std::fabs(aR) + std::fabs(aT);
+  double combErrA = std::sqrt(aRe * aRe + aTe * aTe);
+  if (combErrA < 1e-12) combErrA = 1e-12;
+  double thrA = std::max(alpha_sigma * _mergeMaxZalpha, _mergeMaxZalpha * combErrA);
+  cand.Zalpha    = alpha_diff / combErrA;
+  cand.alphaDiff = alpha_diff;
+  cand.alphaThr  = thrA;
+  bool okAlpha   = (alpha_diff <= thrA);
+  cand.okAlpha   = okAlpha;
+
+  if (dbg2)
+    std::cout << std::scientific << std::setprecision(4)
+              << T << " STEP6 VETO-1 slope : |dAlpha|=" << alpha_diff
+              << " thr=" << thrA
+              << " (sigma-term=" << alpha_sigma * _mergeMaxZalpha
+              << " , err-term=" << _mergeMaxZalpha * combErrA << ")"
+              << std::fixed << std::setprecision(2)
+              << "  pull=" << cand.Zalpha
+              << "  -> " << (okAlpha ? "PASS" : "FAIL")
+              << (aR * aT > 0 ? "" : "  [opposite sign slopes]") << std::endl;
+
+  if (!okAlpha) {
+    _segmentHits = saved_segmentHits;
+    std::ostringstream m;
+    m << "VETO-1 slope mismatch: |dAlpha|=" << std::scientific << std::setprecision(3)
+      << alpha_diff << " > " << thrA << ", pull=" << std::fixed << std::setprecision(2)
+      << cand.Zalpha;
+    return reject(m.str());
+  }
+
+  //===========================================================================
+  // STEP 7 : VETO-2 - extrapolate the ref line to the centre of the test
+  //          segment and check that the test segment, shifted as a whole by
+  //          n*2pi, lands on that line within the combined error.
+  //
+  //          zTest is the hit-density-weighted centre of the test segment, so
+  //          the comparison is made where the test segment is best determined
+  //          and the extrapolation from ref is shortest.
+  //          Both sides are evaluated from their own line fits rather than
+  //          from a single hit, so hit-level noise does not drive the test.
+  //===========================================================================
+  double zTest = 0.0;
+  for (const auto& h : locTest) zTest += h.z;
+  zTest /= (double)locTest.size();
+
+  const double phiPred   = aR * zTest + bR;   // ref line extrapolated to zTest
+  const double phiObsRaw = aT * zTest + bT;   // test line evaluated at zTest
+
+  // Rigid n*2pi shift of the whole test segment onto the extended ref line.
+  const int    nShift  = (int)std::round((phiPred - phiObsRaw) / (2.0 * M_PI));
+  const double phiObs  = phiObsRaw + nShift * 2.0 * M_PI;
+  const double dPhi    = phiPred - phiObs;
+
+  const double errPred  = std::sqrt(zTest * zTest * aRe * aRe + bRe * bRe);
+  const double errObs   = std::sqrt(zTest * zTest * aTe * aTe + bTe * bTe);
+  double combErrP = std::sqrt(errPred * errPred + errObs * errObs);
+  if (combErrP < 1e-12) combErrP = 1e-12;
+  const double thrP = std::max(0.4, _mergeMaxZphi * combErrP);
+
+  cand.Zphi            = std::fabs(dPhi) / combErrP;
+  cand.dPhi            = dPhi;
+  cand.dPhiThr         = thrP;
+  bool okPhi           = (std::fabs(dPhi) <= thrP);
+  cand.okPhi           = okPhi;
+  cand.deltaCorrection = nShift;
+
+  if (dbg2) {
+    std::cout << std::fixed << std::setprecision(4)
+              << T << " STEP7 VETO-2 phase : zTest=" << std::setprecision(1) << zTest
+              << std::setprecision(4)
+              << "  phiPred=" << phiPred << " (+-" << errPred << ")"
+              << "  phiObsRaw=" << phiObsRaw << " (+-" << errObs << ")"
+              << "  n=" << nShift << std::endl;
+    std::cout << std::fixed << std::setprecision(4)
+              << T << "                     phiObs(shifted)=" << phiObs
+              << "  dPhi=" << dPhi
+              << " thr=" << thrP
+              << " (floor=0.4 , err-term=" << _mergeMaxZphi * combErrP << ")"
+              << std::setprecision(2) << "  pull=" << cand.Zphi
+              << "  -> " << (okPhi ? "PASS" : "FAIL") << std::endl;
+  }
+
+  if (!okPhi) {
+    _segmentHits = saved_segmentHits;
+    std::ostringstream m;
+    m << "VETO-2 phase mismatch: |dPhi|=" << std::fixed << std::setprecision(4)
+      << std::fabs(dPhi) << " > " << thrP << ", pull=" << std::setprecision(2)
+      << cand.Zphi << ", n=" << nShift;
+    return reject(m.str());
+  }
+
+  //===========================================================================
+  // STEP 8 : the pair IS mergeable. Build the merged segment and produce the
+  //          numbers used to rank this candidate against the other mergeable
+  //          pairs. Ranking order:
+  //            primary   - chi2/ndf of the merged phi-z fit after the n*2pi
+  //                        shift (smaller is better)
+  //            secondary - chi2/ndf of the circle fit, used only when the
+  //                        primary values are effectively equal
+  //          No cut is applied here; this stage only scores.
+  //===========================================================================
+  std::vector<ev5_HitsInNthStation> merged;
+  merged.reserve(locRef.size() + locTest.size());
+  for (auto h : locRef ) { h.nturn = 0;      merged.push_back(h); }
+  for (auto h : locTest) { h.nturn = nShift; merged.push_back(h); }
+  sortByZ(merged);                        // most upstream hit becomes the reference
+
+  _segmentHits.clear();
+  _segmentHits.push_back(merged);         // index 0
+  double aM = 0, aMe = 0, bM = 0, bMe = 0, cM = 0;
+  ev5_fit_slope_ver5(0, aM, aMe, bM, bMe, cM);
+
+  _segmentHits = saved_segmentHits;       // restore the member
+
+  cand.alpha        = aM;  cand.alphaError = aMe;
+  cand.beta         = bM;  cand.betaError  = bMe;
+  cand.ndf_phiz     = std::max(1.0, (double)merged.size() - 2.0);
+  cand.chi2ndf_phiz = cM;
+  cand.chi2_phiz    = cM * cand.ndf_phiz;
+
+  if (dbg2)
+    std::cout << std::scientific << std::setprecision(4)
+              << T << " STEP8 merged fit : alpha=" << aM << " +- " << aMe
+              << "  beta=" << bM << " +- " << bMe
+              << std::fixed << std::setprecision(3)
+              << "  chi2/ndf=" << cM << " (nHit=" << merged.size() << ")" << std::endl;
+
+  if (dbg3) {
+    std::cout << T << " STEP8 merged hits :" << std::endl;
+    std::cout << T << "   idx  station        z     helixPhi   nturn    resid" << std::endl;
+    for (const auto& h : merged) {
+      const double phiFit = aM * h.z + bM;
+      const double resid  = (h.helixPhi + 2 * M_PI * h.nturn) - phiFit;
+      std::cout << std::fixed
+                << T << "  " << std::setw(5) << h.hitIndice
+                << std::setw(9)  << h.station
+                << std::setw(10) << std::setprecision(1) << h.z
+                << std::setw(12) << std::setprecision(4) << h.helixPhi
+                << std::setw(8)  << h.nturn
+                << std::setw(10) << std::setprecision(4) << resid << std::endl;
+    }
+  }
+
+  cand.okFit = true;     // no absolute quality cut at this stage
+  cand.valid = true;
+
+  cand.mergedHits = merged;
+  cand.mergedDiag = locDRef;
+  cand.mergedDiag.insert(cand.mergedDiag.end(), locDTest.begin(), locDTest.end());
+  std::sort(cand.mergedDiag.begin(), cand.mergedDiag.end(),
+            [](const ev5_Segment& a, const ev5_Segment& b) { return a.z < b.z; });
+
+  if (dbg)
+    std::cout << std::fixed << std::setprecision(4)
+              << T << "  ACCEPT : chi2/ndf_phiz=" << cand.chi2ndf_phiz
+              << " (primary)  chi2/ndf_circle=" << cand.chi2ndf_circle
+              << " (secondary)  Zalpha=" << std::setprecision(2) << cand.Zalpha
+              << " Zphi=" << cand.Zphi
+              << " n=" << cand.deltaCorrection
+              << " nHit=" << cand.mergedHits.size() << std::endl;
+
+  return true;
+}
+
+
+//-----------------------------------------------------------------------------
+// (3) New mergeSegmentsAll: evaluate all pairs -> merge only the best one ->
+//     repeat until no mergeable pair is left.
+//-----------------------------------------------------------------------------
+void PhiZSeedFinder::mergeSegmentsAll(std::vector<std::vector<ev5_HitsInNthStation>>& all_ThisIsBestSegment,
+                                      std::vector<std::vector<ev5_Segment>>&          all_ThisIsBestSegment_Diag,
+                                      double thre_residual) {
+
+  (void)thre_residual;   // kept for signature compatibility, not used any more
+
+  const bool dbg  = 1;
+
+  std::cout << "\n############################################################" << std::endl;
+  std::cout << "# mergeSegmentsAll (best-pair version)  : start with "
+            << all_ThisIsBestSegment.size() << " segment(s)" << std::endl;
+  std::cout << "############################################################" << std::endl;
+
+  // Initialisation: stamp the original segment number on every hit, since
+  // ev5_fit_slope_ver4 groups hits by segmentIndex.
+  for (size_t s = 0; s < all_ThisIsBestSegment.size(); ++s) {
+    for (auto& h : all_ThisIsBestSegment[s]) {
+      h.nturn        = 0;
+      h.segmentIndex = (int)s;
+      h.used         = true;
+    }
+  }
+
+  if (dbg) {
+    std::cout << "# input segments:" << std::endl;
+    for (size_t s = 0; s < all_ThisIsBestSegment.size(); ++s) {
+      int    stLo = 9999, stHi = -1;
+      double zLo = 1e9, zHi = -1e9;
+      for (const auto& h : all_ThisIsBestSegment[s]) {
+        stLo = std::min(stLo, h.station);  stHi = std::max(stHi, h.station);
+        zLo  = std::min(zLo,  h.z);        zHi  = std::max(zHi,  h.z);
+      }
+      std::cout << std::fixed << std::setprecision(1)
+                << "#   seg " << std::setw(2) << s
+                << " : nHit=" << std::setw(3) << all_ThisIsBestSegment[s].size()
+                << "  station [" << stLo << "," << stHi << "]"
+                << "  z [" << zLo << "," << zHi << "]" << std::endl;
+    }
+  }
+
+  _segmentHits = all_ThisIsBestSegment;
+
+  if (all_ThisIsBestSegment.size() < 2) {
+    std::cout << "# only one segment, nothing to merge" << std::endl;
     std::cout << "Final #segments = " << all_ThisIsBestSegment.size() << std::endl;
-} //end mergeSegmentsAll
+    return;
+  }
+
+  int pass       = 0;
+  int nMergeDone = 0;
+
+  while (all_ThisIsBestSegment.size() >= 2) {
+
+    ++pass;
+    const int nSeg  = (int)all_ThisIsBestSegment.size();
+    const int nPair = nSeg * (nSeg - 1) / 2;
+    std::cout << "\n=========== merge pass " << pass
+              << " : " << nSeg << " segment(s), " << nPair << " pair(s) to test"
+              << " ===========" << std::endl;
+
+    //-------------------------------------------------------------------------
+    // PHASE A : evaluate every pair (nothing is modified at this point)
+    //-------------------------------------------------------------------------
+    std::vector<ev5_MergeCandidate> evaluated;   // every pair, accepted or not
+    evaluated.reserve(nPair);
+
+    for (size_t i = 0; i + 1 < all_ThisIsBestSegment.size(); ++i) {
+      for (size_t j = i + 1; j < all_ThisIsBestSegment.size(); ++j) {
+        ev5_MergeCandidate cand;
+        evaluateMergePair(all_ThisIsBestSegment[i], all_ThisIsBestSegment_Diag[i],
+                          all_ThisIsBestSegment[j], all_ThisIsBestSegment_Diag[j],
+                          (int)i, (int)j, cand);
+        evaluated.push_back(cand);
+      }
+    }
+
+    //-------------------------------------------------------------------------
+    // Summary table of the whole pass: one line per pair, accepted or rejected
+    //-------------------------------------------------------------------------
+    int nAccept = 0;
+    for (const auto& c : evaluated) if (c.valid) ++nAccept;
+
+    std::cout << "--- pass " << pass << " summary : "
+              << nAccept << " accepted / " << evaluated.size() << " pairs ---" << std::endl;
+    std::cout << "  pair    nHit(r,t)  drop  chi2/ndf_phiz  chi2/ndf_cir   Zalpha    Zphi   n   verdict"
+              << std::endl;
+    for (const auto& c : evaluated) {
+      std::cout << std::fixed
+                << "  " << std::setw(2) << c.refIdx << "-" << std::setw(2) << c.testIdx
+                << "   (" << std::setw(3) << c.nHitRefIn << "," << std::setw(3) << c.nHitTestIn << ")"
+                << std::setw(6) << c.nDropped;
+      if (c.valid) {
+        std::cout << std::setprecision(3)
+                  << std::setw(15) << c.chi2ndf_phiz
+                  << std::setw(14) << c.chi2ndf_circle
+                  << std::setprecision(2)
+                  << std::setw(9)  << c.Zalpha
+                  << std::setw(8)  << c.Zphi
+                  << std::setw(4)  << c.deltaCorrection;
+      } else {
+        std::cout << std::setw(15) << "-" << std::setw(14) << "-"
+                  << std::setw(9)  << "-" << std::setw(8) << "-" << std::setw(4) << "-";
+      }
+      std::cout << "   " << (c.valid ? std::string("ACCEPT") : ("REJECT: " + c.rejectReason))
+                << std::endl;
+    }
+
+    //-------------------------------------------------------------------------
+    // PHASE B : pick the single most consistent pair
+    //-------------------------------------------------------------------------
+    std::vector<ev5_MergeCandidate> candidates;
+    for (const auto& c : evaluated) if (c.valid) candidates.push_back(c);
+
+    if (candidates.empty()) {
+      std::cout << "[mergeSegmentsAll] no mergeable pair left in pass " << pass
+                << " -> stop" << std::endl;
+      break;
+    }
+
+    // Ranking: the merged phi-z chi2/ndf after the n*2pi shift decides.
+    // The circle chi2/ndf is consulted only when the phi-z values are
+    // effectively equal, so it acts purely as a tie-breaker.
+    const double kChi2TieEpsilon = 1.0e-3;
+    std::sort(candidates.begin(), candidates.end(),
+              [kChi2TieEpsilon](const ev5_MergeCandidate& a, const ev5_MergeCandidate& b) {
+                if (std::fabs(a.chi2ndf_phiz - b.chi2ndf_phiz) > kChi2TieEpsilon)
+                  return a.chi2ndf_phiz < b.chi2ndf_phiz;
+                return a.chi2ndf_circle < b.chi2ndf_circle;
+              });
+
+    std::cout << "--- accepted candidates ranked (primary: chi2/ndf_phiz, tie-break: chi2/ndf_circle)"
+              << " (pass " << pass << ") ---" << std::endl;
+    for (size_t k = 0; k < candidates.size(); ++k) {
+      const auto& c = candidates[k];
+      std::cout << std::fixed << std::setprecision(4)
+                << "  #" << k << " (" << c.refIdx << "," << c.testIdx << ")"
+                << " chi2ndf_phiz=" << std::setw(9) << c.chi2ndf_phiz
+                << " chi2ndf_cir="  << std::setw(9) << c.chi2ndf_circle
+                << " | Zalpha=" << std::setprecision(2) << std::setw(6) << c.Zalpha
+                << " Zphi="     << std::setw(6) << c.Zphi
+                << " n="        << std::setw(3) << c.deltaCorrection
+                << " nHitMerged=" << std::setw(4) << c.mergedHits.size()
+                << (k == 0 ? "   <== WINNER" : "")
+                << std::endl;
+    }
+
+    const ev5_MergeCandidate& best = candidates.front();
+
+    if (candidates.size() > 1) {
+      const auto& second = candidates[1];
+      std::cout << std::fixed << std::setprecision(4)
+                << "  margin over runner-up (" << second.refIdx << "," << second.testIdx << ") : "
+                << "d(chi2/ndf_phiz)=" << (second.chi2ndf_phiz - best.chi2ndf_phiz)
+                << "  d(chi2/ndf_circle)=" << (second.chi2ndf_circle - best.chi2ndf_circle)
+                << std::endl;
+    }
+
+    //-------------------------------------------------------------------------
+    // PHASE C : commit only the winning pair
+    //-------------------------------------------------------------------------
+    std::cout << "  --> MERGE segment " << best.testIdx << " into " << best.refIdx
+              << " : nHit " << best.nHitRefIn << " + " << best.nHitTestIn
+              << " - " << best.nDropped << " dropped = " << best.mergedHits.size()
+              << std::fixed << std::setprecision(4)
+              << " , chi2/ndf_phiz=" << best.chi2ndf_phiz
+              << " , chi2/ndf_circle=" << best.chi2ndf_circle
+              << " , n=" << best.deltaCorrection
+              << std::scientific << std::setprecision(4)
+              << " , alpha=" << best.alpha << " +- " << best.alphaError
+              << std::fixed << std::setprecision(2)
+              << " , R=" << best.rC << std::endl;
+
+    all_ThisIsBestSegment[best.refIdx]      = best.mergedHits;   // helixPhi/nturn already updated
+    all_ThisIsBestSegment_Diag[best.refIdx] = best.mergedDiag;
+
+    all_ThisIsBestSegment.erase     (all_ThisIsBestSegment.begin()      + best.testIdx);
+    all_ThisIsBestSegment_Diag.erase(all_ThisIsBestSegment_Diag.begin() + best.testIdx);
+    ++nMergeDone;
+
+    // Keep everything ordered in increasing z
+    for (auto& seg : all_ThisIsBestSegment)
+      std::sort(seg.begin(), seg.end(),
+                [](const ev5_HitsInNthStation& a, const ev5_HitsInNthStation& b) { return a.z < b.z; });
+    for (auto& seg : all_ThisIsBestSegment_Diag)
+      std::sort(seg.begin(), seg.end(),
+                [](const ev5_Segment& a, const ev5_Segment& b) { return a.z < b.z; });
+
+    _segmentHits = all_ThisIsBestSegment;
+
+    if (dbg) {
+      std::cout << "  segments after pass " << pass << ":" << std::endl;
+      for (size_t s = 0; s < all_ThisIsBestSegment.size(); ++s) {
+        int    stLo = 9999, stHi = -1;
+        double zLo = 1e9, zHi = -1e9;
+        for (const auto& h : all_ThisIsBestSegment[s]) {
+          stLo = std::min(stLo, h.station);  stHi = std::max(stHi, h.station);
+          zLo  = std::min(zLo,  h.z);        zHi  = std::max(zHi,  h.z);
+        }
+        std::cout << std::fixed << std::setprecision(1)
+                  << "    seg " << std::setw(2) << s
+                  << " : nHit=" << std::setw(3) << all_ThisIsBestSegment[s].size()
+                  << "  station [" << stLo << "," << stHi << "]"
+                  << "  z [" << zLo << "," << zHi << "]" << std::endl;
+      }
+    }
+
+    // Next pass: re-evaluate all pairs with one fewer segment
+  }
+
+  _segmentHits = all_ThisIsBestSegment;
+
+  std::cout << "\n############################################################" << std::endl;
+  std::cout << "# mergeSegmentsAll done : " << nMergeDone << " merge(s) in "
+            << pass << " pass(es)" << std::endl;
+  std::cout << "Final #segments = " << all_ThisIsBestSegment.size() << std::endl;
+  std::cout << "############################################################" << std::endl;
+}
+
 
 //----------------------------------------------------------------------------
 void PhiZSeedFinder::plot_PhiVsZ_forSegment_debug(
@@ -5020,63 +6770,135 @@ void PhiZSeedFinder::plot_PhiVsZ_OriginalTC(int tc){
   delete gr;
   for(int j=0; j<18; j++) delete line[j];
 }
+//----------------------------------------------------------------------------
+void PhiZSeedFinder::plot_PhiVsZ_RawStep(const std::vector<std::vector<ev5_HitsInNthStation>>& segments,
+                                         const std::string& stepName,
+                                         int tc,
+                                         int station) {
+
+
+
+    int maxSegs = segments.size();
+    for (int i = 0; i < maxSegs; ++i) {
+        const auto& seg = segments[i];
+        if(seg.empty()) continue;
+
+        TGraphErrors* gr = new TGraphErrors();
+        gr->SetTitle("");
+        gr->SetMarkerStyle(20);
+
+        int index = 0;
+        for (const auto& hit : seg) {
+          gr->SetPoint(index, hit.z, hit.phi);
+          index++;
+        }
+
+        TCanvas *canvas = new TCanvas("canvas", "", 800, 600);
+        canvas->SetMargin(0.1, 0.1, 0.1, 0.1);
+        gr->SetMarkerSize(0.8);
+        gr->SetMarkerColor(kRed);
+        gr->Draw("AP");
+        gr->GetXaxis()->SetTitle("Z [mm]");
+        gr->GetYaxis()->SetTitle("Phi [rad]");
+        gr->GetXaxis()->SetLimits(-1600, 1600);
+        gr->GetYaxis()->SetRangeUser(-M_PI, M_PI);
+        // Add title at the top
+        TPaveText *title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
+        std::stringstream eventStringStream;
+        eventStringStream << "run: " << run << " subRun: " << subrun << " event: " << eventNumber;
+        title->AddText(Form("Phi vs. Z (Run-subRun-Event, #cand) = (%d-%d-%d, #%d) (pbar1b0)", run, subrun, eventNumber, tc));
+        title->SetFillColor(0);
+        title->SetTextAlign(22);
+        title->Draw("same");
+        //Draw vertical lines at specified X-coordinate of stations (18 stations)
+        double stations_x[18] = {-1518.320, -1344.320, -1170.320, -996.320, -822.320, -648.320, -474.320, -300.320, -126.320, 47.680, 221.680, 395.680, 569.680, 743.680, 917.680, 1091.680, 1265.680, 1439.680};
+        TLine *line[18];
+        for(int j=0; j<18; j++){
+          double x = stations_x[j];
+          line[j] = new TLine(x, -M_PI, x, M_PI);
+          line[j]->SetLineStyle(2);  // Dashed line style
+          line[j]->SetLineWidth(1);
+          line[j]->SetLineColor(kBlack);
+          line[j]->Draw("same");
+        }
+        std::string filename = std::format("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/segment_check/{}/PhiZ_TC{:03d}_Stn{:02d}_{:02d}_{}.pdf", stepName, tc, station, i, stepName);
+          canvas->SaveAs(filename.c_str());
+
+          //delete
+          delete canvas;
+          delete gr;
+          for(int j=0; j<18; j++) delete line[j];
+
+        }
+
+
+}
+
 //-----------------------------------------------------------------------------
 void PhiZSeedFinder::plot_HelixPhiVsZ(int TC, int isegment){
-  //step2: calculate the slope for other segment
-  ::LsqSums2 _lineFitter;
-  _lineFitter.clear();
-  TMultiGraph* graph  = new TMultiGraph();
-  const int ngraph = 2;
-  TGraph *gr[ngraph];
-  for(int j=0; j<ngraph; j++) {
-    gr[j] = new TGraph();
-    gr[j]->SetMarkerStyle(20);
-    gr[j]->SetMarkerSize(0.5);
-  }
-  gr[0]->SetMarkerColor(kRed);
-  gr[1]->SetMarkerColor(kGreen);
-  //Helix Phi
-  int index[ngraph] = {0};
-  for(size_t j=0; j<_tcHits.size(); j++) {
-   if(_tcHits[j].used == false) continue;
-   double z = _tcHits[j].z;
-   double phi = _tcHits[j].phi;
-   double helixPhi = _tcHits[j].helixPhi;
-   //std::cout<<"Helix Phi z/phi = "<<j<<"/"<<z<<"/"<<phi<<std::endl;
-   gr[0]->SetPoint(index[0]++, z, helixPhi);
-   gr[1]->SetPoint(index[1]++, z, phi);
-   double phiWeight = 1.0 / (_tcHits[j].helixPhiError2);
-   _lineFitter.addPoint(z, phi, phiWeight);
-  }
-  graph->Add(gr[0],"AP");
-  //graph->Add(gr[1],"AP");
-  //Draw
-  TCanvas *canvas = new TCanvas("canvas", "My TGraph", 800, 600);
-  canvas->SetMargin(0.1, 0.1, 0.1, 0.1);
-  graph->Draw("AP");
-  graph->GetXaxis()->SetTitle("Z [mm]");
-  graph->GetYaxis()->SetTitle("Helix Phi [rad]");
-  graph->GetXaxis()->SetLimits(-1600, 1600);
-  graph->GetYaxis()->SetRangeUser(-4*M_PI, 4*M_PI);
-  // Add title at the top
-  TPaveText *title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
-  std::stringstream eventStringStream;
-  eventStringStream << "run: " << run << " subRun: " << subrun << " event: " << eventNumber;
-  title->AddText(Form("Phi vs. Z (Run-subRun-Event, TC, Cand) = (%d-%d-%d, #%d, #%d) (pbar1b0)", run, subrun, eventNumber, TC, isegment));
-  title->SetFillColor(0);
-  title->SetTextAlign(22);
-  title->Draw("same");
-  //Draw vertical lines at specified X-coordinate of stations (18 stations)
-  double stations_x[18] = {-1518.320, -1344.320, -1170.320, -996.320, -822.320, -648.320, -474.320, -300.320, -126.320, 47.680, 221.680, 395.680, 569.680, 743.680, 917.680, 1091.680, 1265.680, 1439.680};
-  TLine *line[18];
-  for(int j=0; j<18; j++){
-    double x = stations_x[j];
-    line[j] = new TLine(x, -4*M_PI, x, 4*M_PI);
-    line[j]->SetLineStyle(2);  // Dashed line style
-    line[j]->SetLineWidth(1);
-    line[j]->SetLineColor(kBlack);
-    line[j]->Draw("same");
-  }
+    // step2: calculate the slope for other segment
+    ::LsqSums2 _lineFitter;
+    _lineFitter.clear();
+
+    // We only need one TGraph now, not an array or TMultiGraph
+    TGraph* gr = new TGraph();
+    gr->SetMarkerStyle(20);
+    gr->SetMarkerSize(0.5);
+    gr->SetMarkerColor(kRed);
+
+    int index = 0;
+    for(size_t j=0; j<_tcHits.size(); j++) {
+        if(_tcHits[j].used == false) continue;
+
+        double z = _tcHits[j].z;
+        double phi = _tcHits[j].phi;
+        double helixPhi = _tcHits[j].helixPhi;
+
+        // Only set point for helixPhi
+        gr->SetPoint(index++, z, helixPhi);
+
+        double phiWeight = 1.0 / (_tcHits[j].helixPhiError2);
+        _lineFitter.addPoint(z, phi, phiWeight);
+    }
+
+    // Draw
+    TCanvas *canvas = new TCanvas("canvas", "My TGraph", 800, 600);
+    canvas->SetMargin(0.1, 0.1, 0.1, 0.1);
+
+    // Draw the single graph directly
+    gr->Draw("AP");
+    gr->GetXaxis()->SetTitle("Z [mm]");
+    gr->GetYaxis()->SetTitle("Helix Phi [rad]");
+    gr->GetXaxis()->SetLimits(-1600, 1600);
+    gr->GetYaxis()->SetRangeUser(-4*M_PI, 4*M_PI);
+
+    // Add title at the top
+    TPaveText *title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
+    std::stringstream eventStringStream;
+    eventStringStream << "run: " << run << " subRun: " << subrun << " event: " << eventNumber;
+    title->AddText(Form("Phi vs. Z (Run-subRun-Event, TC, Cand) = (%d-%d-%d, #%d, #%d) (pbar1b0)", run, subrun, eventNumber, TC, isegment));
+    title->SetFillColor(0);
+    title->SetTextAlign(22);
+    title->Draw("same");
+
+    // Draw vertical lines at specified X-coordinate of stations (18 stations)
+    double stations_x[18] = {-1518.320, -1344.320, -1170.320, -996.320, -822.320, -648.320, -474.320, -300.320, -126.320, 47.680, 221.680, 395.680, 569.680, 743.680, 917.680, 1091.680, 1265.680, 1439.680};
+    TLine *line[18];
+    for(int j=0; j<18; j++){
+        double x = stations_x[j];
+        line[j] = new TLine(x, -4*M_PI, x, 4*M_PI);
+        line[j]->SetLineStyle(2);  // Dashed line style
+        line[j]->SetLineWidth(1);
+        line[j]->SetLineColor(kBlack);
+        line[j]->Draw("same");
+    }
+
+    // --- Save and Cleanup (Assuming you have a save block below this in your original code) ---
+    // canvas->SaveAs(...);
+    // delete canvas;
+    // delete gr;
+    // delete title;
+    // for(int j=0; j<18; j++) delete line[j];
 
   // Draw the fitted slope line: y = dydx * x + y0 from x = -1600 to 1600
   /*double x_min = -1600;
@@ -5102,9 +6924,10 @@ paramsText.DrawLatexNDC(textX, textY - 0.10, Form("LsqSums2 fit #chi^{2}/ndf: %f
    //canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/ce/PhiVsZ/HelixPhi/pbar_PhiVsZ-%04d-%04d-%06d_TC-%d.pdf", run, subrun, eventNumber, TC));
   //delete
   delete canvas;
-  for(int j=0; j<ngraph; j++) delete gr[j];
+  delete gr;
   for(int j=0; j<18; j++) delete line[j];
-}
+}//end plot_HelixPhiVsZ
+
 //-----------------------------------------------------------------------------
 void PhiZSeedFinder::plot_PhiVsZ_forEachStep(std::vector<std::vector<ev5_HitsInNthStation>>& ThisIsBestSegment, const char* filename, int tc, int loopIndex){
       //std::cout<<"======================="<<std::endl;
@@ -5187,19 +7010,25 @@ void PhiZSeedFinder::plot_PhiVsZ_forEachStep(std::vector<std::vector<ev5_HitsInN
   fitLine->SetLineStyle(2);  // Dashed line
   fitLine->SetLineWidth(2);
   if (strcmp(filename, "step_07") != 0) fitLine->Draw("same");
-// Draw manual fit parameters text
+  // Draw manual fit parameters text
 TLatex paramsText;
 paramsText.SetTextSize(0.04);
 paramsText.SetTextAlign(13);
 double textX = 0.15;
 double textY = 0.85;
-if (strcmp(filename, "step_07") != 0) paramsText.DrawLatexNDC(textX, textY,        Form("LsqSums2 fit dydx: %f", fitter.dydx()));
-if (strcmp(filename, "step_07") != 0) paramsText.DrawLatexNDC(textX, textY - 0.05, Form("LsqSums2 fit y0: %f", fitter.y0()));
-if (strcmp(filename, "step_07") != 0) paramsText.DrawLatexNDC(textX, textY - 0.10, Form("LsqSums2 fit #chi^{2}/ndf: %f", fitter.chi2Dof()));
-if (strcmp(filename, "step_07") != 0) paramsText.DrawLatexNDC(textX, textY - 0.15, Form("nHits: %f", fitter.qn()));
-   canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/segment_check/%s/pbar_PhiVsZ-%04d-%04d-%06d_TC_%d-%d-%d.pdf", filename, run, subrun, eventNumber, tc, i, loopIndex));
-   //canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/ce/PhiVsZ/segment_check/%s/pbar_PhiVsZ-%04d-%04d-%06d_-%d-%d.pdf", filename, run, subrun, eventNumber, i, loopIndex));
-  //delete
+
+// Only Draw if filename is not "step_07"
+if (strcmp(filename, "step_07") != 0) {
+    // Using %.0f to show zero decimal places
+    paramsText.DrawLatexNDC(textX, textY,         Form("LsqSums2 fit dydx: %.6f", fitter.dydx()));
+    paramsText.DrawLatexNDC(textX, textY - 0.05, Form("LsqSums2 fit y0: %.6f",   fitter.y0()));
+    paramsText.DrawLatexNDC(textX, textY - 0.10, Form("LsqSums2 fit #chi^{2}/ndf: %.2f", fitter.chi2Dof()));
+    paramsText.DrawLatexNDC(textX, textY - 0.15, Form("nHits: %.0f",            fitter.qn()));
+}
+
+canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/segment_check/%s/pbar_PhiVsZ-%04d-%04d-%06d_TC_%d-%d-%d.pdf", filename, run, subrun, eventNumber, tc, i, loopIndex));
+
+
   delete canvas;
   delete gr;
   for(int j=0; j<18; j++) delete line[j];
@@ -5389,9 +7218,13 @@ void PhiZSeedFinder::plot_PhiVsZ_forSegment_ver3(int tc, int isegment){
   std::vector<double> marker_size;
     std::cout<<"Fill "<<std::endl;
   for(int i=0; i<n; i++) {
-   double z = _segmentHits.at(isegment).at(i).z;
-   double phi = _segmentHits.at(isegment).at(i).helixPhi;
-   int index = _segmentHits.at(isegment).at(i).hitIndice;
+   if(_tcHits[i].used == false) continue;
+   //double z = _segmentHits.at(isegment).at(i).z;
+   //double phi = _segmentHits.at(isegment).at(i).helixPhi;
+   //int index = _segmentHits.at(isegment).at(i).hitIndice;
+   double z = _tcHits[i].z;
+   double phi = _tcHits[i].helixPhi;
+   int index = _tcHits[i].hitIndice;
    int alreadyfill = 0;
    for (size_t j = 0; j < _data.tccol->at(tc)._strawHitIdxs.size(); j++) {
     int hitIndice = _data.tccol->at(tc)._strawHitIdxs[j];
@@ -5442,10 +7275,12 @@ void PhiZSeedFinder::plot_PhiVsZ_forSegment_ver3(int tc, int isegment){
     m->SetMarkerColor(marker_color[i]);// Setting marker color with different color for each point
     m->Draw();// Draw marker with different color
   }
+
   gr->GetXaxis()->SetTitle("Z [mm]");
   gr->GetYaxis()->SetTitle("HelixPhi [rad]");
   gr->GetXaxis()->SetLimits(-1600, 1600);
-  gr->GetYaxis()->SetRangeUser(-M_PI, M_PI);
+  gr->GetYaxis()->SetRangeUser(-6*M_PI, 6*M_PI);
+
   // Add title at the top
   TPaveText *title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
   std::stringstream eventStringStream;
@@ -5454,23 +7289,125 @@ void PhiZSeedFinder::plot_PhiVsZ_forSegment_ver3(int tc, int isegment){
   title->SetFillColor(0);
   title->SetTextAlign(22);
   title->Draw("same");
+
   //Draw vertical lines at specified X-coordinate of stations (18 stations)
   double stations_x[18] = {-1518.320, -1344.320, -1170.320, -996.320, -822.320, -648.320, -474.320, -300.320, -126.320, 47.680, 221.680, 395.680, 569.680, 743.680, 917.680, 1091.680, 1265.680, 1439.680};
   TLine *line[18];
   for(int j=0; j<18; j++){
     double x = stations_x[j];
-    line[j] = new TLine(x, -M_PI, x, M_PI);
+    line[j] = new TLine(x, -6*M_PI, x, 6*M_PI);
     line[j]->SetLineStyle(2);  // Dashed line style
     line[j]->SetLineWidth(1);
     line[j]->SetLineColor(kBlack);
     line[j]->Draw("same");
   }
-   canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/PhiVsZ_forSegment_ver3/pbar_PhiVsZ-%04d-%04d-%06d_TC_%d-%d.pdf", run, subrun, eventNumber, tc, isegment));
-  //delete
+
+  // Add text for the double value
+  TLatex dphidx;
+  dphidx.SetTextSize(0.04);
+  dphidx.SetTextAlign(13);
+  dphidx.DrawLatexNDC(0.15, 0.85, Form("#alpha : #beta : #chi^{2}/ndf: %f : %f : %f", _lineFitter.dydx(), _lineFitter.y0(), _lineFitter.chi2Dof()));
+
+  // =======================================================================
+  // NEW: Draw the fitted line
+  // =======================================================================
+  // Define a 1D function: [0]*x + [1] (which is slope*x + intercept)
+  TF1 *fitLine = new TF1("fitLine", "[0]*x + [1]", -1600, 1600);
+  fitLine->SetParameter(0, _lineFitter.dydx()); // Slope
+  fitLine->SetParameter(1, _lineFitter.y0());   // Intercept
+
+  fitLine->SetLineColor(kBlack);
+  fitLine->SetLineStyle(2); // 2 is the dashed line style in ROOT
+  fitLine->SetLineWidth(2); // Slightly thicker than station lines so it stands out
+  fitLine->Draw("same");
+
+  // Save Canvas
+  canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/segment_check/step_10/pbar_PhiVsZ-%04d-%04d-%06d_TC_%d-%d.pdf", run, subrun, eventNumber, tc, isegment));
+
+  // =======================================================================
+  // Cleanup memory
+  // =======================================================================
   delete canvas;
   delete gr;
   for(int j=0; j<18; j++) delete line[j];
-}
+  delete fitLine; // Delete the TF1 object
+
+} //end plot_PhiVsZ_forSegment_ver3
+
+//-----------------------------------------------------------------------------
+void PhiZSeedFinder::plot_PhiVsZ_alignment_step(int tc, int isegment, int stepIdx, int currentSegIdx, double slope, double intercept) {
+    // =======================================================================
+    // 1. Create Canvas and Graph
+    // =======================================================================
+    TCanvas *canvas = new TCanvas("canvas", "Phi vs Z Alignment Step", 800, 600);
+    TGraphErrors *gr = new TGraphErrors();
+
+    int ptIdx = 0;
+    for(size_t j = 0; j < _tcHits.size(); j++) {
+        if(!_tcHits[j].used) continue;
+        // Plot all valid hits with their current (possibly shifted) helixPhi
+        gr->SetPoint(ptIdx, _tcHits[j].z, _tcHits[j].helixPhi);
+        gr->SetPointError(ptIdx, 0.0, std::sqrt(_tcHits[j].helixPhiError2));
+        ptIdx++;
+    }
+
+    gr->SetMarkerStyle(20);
+    gr->SetMarkerSize(0.8);
+    gr->Draw("AP");
+    gr->GetXaxis()->SetTitle("Z [mm]");
+    gr->GetYaxis()->SetTitle("HelixPhi [rad]");
+    gr->GetXaxis()->SetLimits(-1600, 1600);
+    gr->GetYaxis()->SetRangeUser(-6*M_PI, 6*M_PI);
+
+    // =======================================================================
+    // 2. Add Titles and Station Lines
+    // =======================================================================
+    TPaveText *title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
+    // Added Step Index and Segment Index to the title for clarity
+    title->AddText(Form("Phi vs Z Align Step %d (Seg %d) | TC %d, #cand %d", stepIdx, currentSegIdx, tc, isegment));
+    title->SetFillColor(0);
+    title->SetTextAlign(22);
+    title->Draw("same");
+
+    double stations_x[18] = {-1518.320, -1344.320, -1170.320, -996.320, -822.320, -648.320, -474.320, -300.320, -126.320, 47.680, 221.680, 395.680, 569.680, 743.680, 917.680, 1091.680, 1265.680, 1439.680};
+    TLine *line[18];
+    for(int j=0; j<18; j++){
+        double x = stations_x[j];
+        line[j] = new TLine(x, -6*M_PI, x, 6*M_PI);
+        line[j]->SetLineStyle(2);
+        line[j]->SetLineWidth(1);
+        line[j]->SetLineColor(kBlack);
+        line[j]->Draw("same");
+    }
+
+    // =======================================================================
+    // 3. Draw Predicted Fitting Line and Text
+    // =======================================================================
+    TLatex dphidx;
+    dphidx.SetTextSize(0.04);
+    dphidx.SetTextAlign(13);
+    // Note: Chi2 is omitted here since this is the prediction from the reference segment
+    dphidx.DrawLatexNDC(0.15, 0.85, Form("Ref Fit -> #alpha : #beta = %f : %f", slope, intercept));
+
+    TF1 *fitLine = new TF1("fitLine", "[0]*x + [1]", -1600, 1600);
+    fitLine->SetParameter(0, slope);
+    fitLine->SetParameter(1, intercept);
+    fitLine->SetLineColor(kBlack);
+    fitLine->SetLineStyle(2);
+    fitLine->SetLineWidth(2);
+    fitLine->Draw("same");
+
+    // =======================================================================
+    // 4. Save and Cleanup (Notice the filename includes %02d for the step)
+    // =======================================================================
+    canvas->SaveAs(Form("/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/segment_check/step_11/pbar_PhiVsZ-%04d-%04d-%06d_TC_%d-%d_AlignStep%02d.pdf", run, subrun, eventNumber, tc, isegment, stepIdx));
+
+    delete title;
+    delete fitLine;
+    for(int j=0; j<18; j++) delete line[j];
+    delete gr;
+    delete canvas;
+}//end plot_PhiVsZ_alignment_step
 
 //-----------------------------------------------------------------------------
 void PhiZSeedFinder::plot_CirclePhiVsZ_forSegment(int tc, int isegment){
@@ -7672,6 +9609,7 @@ std::cout << std::setprecision(4)
     size_t nComboHitsInSegment = _tcHits.size();
     for(size_t i=0; i<nComboHitsInSegment; i++){
       if(_tcHits[i].used == false) continue;
+      _tcHits[i].nturn = 0;
       double x = _tcHits.at(i).x;
       double y = _tcHits.at(i).y;
       double wP = 0.1;//tentative value
@@ -7681,28 +9619,78 @@ std::cout << std::setprecision(4)
     double yC = _circleFitter.y0();
     double rC = _circleFitter.radius();
 
-    //Step2: fit circle of the segment with corrected weight
-    xC = _circleFitter.x0();
-    yC = _circleFitter.y0();
-    rC = _circleFitter.radius();
-    _circleFitter.clear();
-    for(size_t i=0; i<nComboHitsInSegment; i++){
-      if(_tcHits[i].used == false) continue;
-      computeCircleError2(i, xC, yC, rC);
-      double x = _tcHits.at(i).x;
-      double y = _tcHits.at(i).y;
-      double wP = 1.0 / (_tcHits[i].circleError2);
-      _circleFitter.addPoint(x, y, wP);
+    // --- (1) Setup Debug Data Structure ---
+    struct CircleDebugInfo {
+        size_t hitIdx;
+        double x;
+        double y;
+        double z;    // <-- Added Z coordinate
+        double phi;
+        double error2;
+        double weight;
+    };
+    std::vector<CircleDebugInfo> debugData;
+    if (_debugLevel > 0) {
+        debugData.reserve(nComboHitsInSegment); // Pre-allocate memory for efficiency
     }
+
+    //Step2: fit circle of the segment with corrected weight
+    _circleFitter.clear();
+
+    for(size_t i = 0; i < nComboHitsInSegment; i++) {
+        if(_tcHits[i].used == false) continue;
+
+        // This function prints its own debug info safely without mixing
+        computeCircleError2(i, xC, yC, rC);
+
+        double x = _tcHits.at(i).x;
+        double y = _tcHits.at(i).y;
+        double z = _tcHits.at(i).z;  // <-- Fetch Z coordinate
+        double wP = 1.0 / (_tcHits[i].circleError2);
+
+        _circleFitter.addPoint(x, y, wP);
+
+        // Store debug info in the vector
+        if (_debugLevel > 0) {
+            double phi = polyAtan2(y, x);
+            debugData.push_back({i, x, y, z, phi, _tcHits[i].circleError2, wP}); // <-- Store Z
+        }
+    }
+
+    // --- Recalculate Parameters ---
     xC = _circleFitter.x0();
     yC = _circleFitter.y0();
     rC = _circleFitter.radius();
 
-      std::cout << "  rC = " << rC
-                << "  rcent = " << sqrt(xC*xC + yC*yC)
-                << "  fcent = " << polyAtan2(yC, xC)
-                << "  chi2dXY = " << _circleFitter.chi2DofCircle()
-                << std::endl;
+    // --- (2) Dump Formatted Table AFTER the Loop ---
+    if (_debugLevel > 0) {
+        std::cout << "\n" << std::string(110, '=') << "\n"; // Widened for the extra column
+        std::cout << " [Circle Fitter] Weight & Hit Info (Step 2)\n";
+        std::cout << std::string(110, '-') << "\n";
+
+        // Header (Added Z)
+        std::cout << std::format("{:<8} {:<12} {:<12} {:<12} {:<12} {:<15} {:<15}\n",
+                                 "HitIdx", "X [mm]", "Y [mm]", "Z [mm]", "Phi [rad]", "Error2", "Weight (wP)");
+        std::cout << std::string(110, '-') << "\n";
+
+        // Rows (Added Z)
+        for (const auto& data : debugData) {
+            std::cout << std::format("{:<8} {:<12.4f} {:<12.4f} {:<12.4f} {:<12.4f} {:<15.6f} {:<15.6f}\n",
+                                     data.hitIdx, data.x, data.y, data.z, data.phi, data.error2, data.weight);
+        }
+
+        // Summary
+        std::cout << std::string(110, '-') << "\n";
+        std::cout << std::format(" Final Circle Fit: xC = {:.4f}, yC = {:.4f}, rC = {:.4f}\n", xC, yC, rC);
+        std::cout << std::format(" Chi2/DOF        : {:.4f}\n", _circleFitter.chi2DofCircle());
+        std::cout << std::string(110, '=') << std::endl;
+    }
+
+    std::cout << "  rC = " << rC
+    << "  rcent = " << sqrt(xC*xC + yC*yC)
+    << "  fcent = " << polyAtan2(yC, xC)
+    << "  chi2dXY = " << _circleFitter.chi2DofCircle()
+    << std::endl;
 
     //Step3: calculate helixPhi and helixPhiError
     for(size_t i=0; i<nComboHitsInSegment; i++){
@@ -7715,13 +9703,32 @@ std::cout << std::setprecision(4)
       _tcHits[i].helixPhiError2 = helixPhiError2;
     }
 
+    // --- (3) Dump Formatted Table AFTER Step 3 ---
+    if (_debugLevel > 0) {
+        std::cout << "\n" << std::string(60, '=') << "\n";
+        std::cout << " [Helix Fitter] Computed Helix Phi (Step 3)\n";
+        std::cout << std::string(60, '-') << "\n";
+
+        // Header
+        std::cout << std::format("{:<8} {:<12} {:<15} {:<15}\n",
+                                 "HitIdx", "Z [mm]", "HelixPhi", "HelixPhiErr2");
+        std::cout << std::string(60, '-') << "\n";
+
+        // Rows
+        for (size_t i = 0; i < nComboHitsInSegment; i++) {
+            if (!_tcHits[i].used) continue;
+
+            std::cout << std::format("{:<8} {:<12.4f} {:<15.6f} {:<15.6f}\n",
+                                     i,
+                                     _tcHits[i].z,
+                                     _tcHits[i].helixPhi,
+                                     _tcHits[i].helixPhiError2);
+        }
+        std::cout << std::string(60, '=') << std::endl;
+    }
+
+
     _lineFitter.clear();
-    // Containers for per-segment centroids
-    std::vector<int>    segIndexList;
-    std::vector<double> segZc;
-    std::vector<double> segPhic;
-    std::vector<double> segdPhidZ;
-    std::vector<double> segPhi0;
 
     // Step 1: find unique segmentIndex values
     std::set<int> uniqueSegmentIndices;
@@ -7730,7 +9737,7 @@ std::cout << std::setprecision(4)
     }
 
     std::cout << "Number of unique segmentIndex values = "
-    << uniqueSegmentIndices.size() << std::endl;
+              << uniqueSegmentIndices.size() << std::endl;
 
     // Step 2: process each segmentIndex independently
     for (int segIdx : uniqueSegmentIndices) {
@@ -7745,57 +9752,102 @@ std::cout << std::setprecision(4)
       }
 
       if (hitIdx.size() < 3) {
-        std::cout << "Segment " << segIdx
-                  << ": not enough hits (" << hitIdx.size() << ")\n";
+        if (_debugLevel > 0) {
+          std::cout << "Segment " << segIdx
+                    << ": not enough hits (" << hitIdx.size() << ")\n";
+        }
         continue;
       }
 
-      //Step B: sort hits by z
+      // Step B: sort hits by z
       std::sort(hitIdx.begin(), hitIdx.end(),
-          [&](size_t a, size_t b) {
-            return _tcHits[a].z < _tcHits[b].z;
-          });
+                [&](size_t a, size_t b) {
+                  return _tcHits[a].z < _tcHits[b].z;
+                });
 
-      //Step C: direction-aware phi unwrapping
+      // Step C: Predictive Phi Unwrapping
       std::vector<double> phi_unwrapped;
       phi_unwrapped.reserve(hitIdx.size());
 
-      phi_unwrapped.push_back(_tcHits[hitIdx[0]].helixPhi);
+      _lineFitter.clear();
 
+      // 1. Setup the Reference Hit (Most upstream hit, j=0)
+      size_t refIdx = hitIdx[0];
+      double refZ   = _tcHits[refIdx].z;
+      double refPhi = _tcHits[refIdx].helixPhi;
+      double refWeight = 1.0 / _tcHits[refIdx].helixPhiError2;
+
+      phi_unwrapped.push_back(refPhi);
+      _lineFitter.addPoint(refZ, refPhi, refWeight);
+
+      if (_debugLevel > 0) {
+        std::cout << "\n>>> STARTING PREDICTIVE UNWRAPPING TRACE <<<\n";
+        std::cout << std::format("Init: Added Ref Hit[0] at Z = {:.4f}, rawPhi = {:.4f}\n",
+                                 refZ, refPhi);
+      }
+
+      // 2. Loop over remaining hits to unwrap and fit dynamically
       for (size_t i = 1; i < hitIdx.size(); ++i) {
         size_t idx = hitIdx[i];
 
-        double phi_raw  = _tcHits[idx].helixPhi;
-        double phi_prev = phi_unwrapped.back();
+        double z      = _tcHits[idx].z;
+        double rawPhi = _tcHits[idx].helixPhi;
+        double weight = 1.0 / _tcHits[idx].helixPhiError2;
 
-        double best_phi = phi_raw;
-        double min_diff = std::abs(phi_raw - phi_prev);
+        double candidatePhi = rawPhi;
 
-        // allow multi-turns
-        for (int k = -3; k <= 3; ++k) {
-          double candidate = phi_raw + k * 2.0 * M_PI;
-          double diff = std::abs(candidate - phi_prev);
-          if (diff < min_diff) {
-            min_diff = diff;
-            best_phi = candidate;
+        if (_debugLevel > 0) {
+          std::cout << std::string(60, '-') << "\n";
+          std::cout << std::format("Hit i={}, Idx={}, Z={:.4f}, rawPhi={:.4f} | Fitter N={}\n",
+                                   i, idx, z, rawPhi, _lineFitter.qn());
+        }
+
+        // If we have enough points in fitter, predict from line
+        if (_lineFitter.qn() >= 3) {
+          double lineSlope     = _lineFitter.dydx();
+          double lineIntercept = _lineFitter.y0();
+
+          double predictedPhi  = lineSlope * z + lineIntercept;
+
+          double diff  = predictedPhi - rawPhi;
+          int turns    = std::round(diff / (2.0 * M_PI));
+          candidatePhi = rawPhi + turns * 2.0 * M_PI;
+
+          if (_debugLevel > 0) {
+            std::cout << std::format("  [Mode: PREDICT]\n");
+            std::cout << std::format("  Slope = {:.6f}, Intercept = {:.6f}\n",
+                                     lineSlope, lineIntercept);
+            std::cout << std::format("  Predicted Phi = {:.4f}\n", predictedPhi);
+            std::cout << std::format("  Diff = {:.4f} -> Turns = {}\n", diff, turns);
+          }
+        }
+        else {
+          // fallback: compare to previous hit
+          double prevPhi = phi_unwrapped.back();
+          double diff    = prevPhi - rawPhi;
+          int turns      = std::round(diff / (2.0 * M_PI));
+          candidatePhi   = rawPhi + turns * 2.0 * M_PI;
+
+          if (_debugLevel > 0) {
+            std::cout << std::format("  [Mode: FALLBACK (Prev Hit)]\n");
+            std::cout << std::format("  Prev Phi = {:.4f}\n", prevPhi);
+            std::cout << std::format("  Diff = {:.4f} -> Turns = {}\n", diff, turns);
           }
         }
 
-        phi_unwrapped.push_back(best_phi);
-      }
-
-      //Step D: slope-consistency safeguard
-      for (size_t i = 2; i < phi_unwrapped.size(); ++i) {
-        double dphi1 = phi_unwrapped[i-1] - phi_unwrapped[i-2];
-        double dphi2 = phi_unwrapped[i]   - phi_unwrapped[i-1];
-
-        if (dphi1 * dphi2 < 0 && std::abs(dphi2) > M_PI/2) {
-          phi_unwrapped[i] += (dphi1 > 0 ? +2*M_PI : -2*M_PI);
+        if (_debugLevel > 0) {
+          std::cout << std::format("  => Chosen Candidate Phi = {:.4f}\n", candidatePhi);
         }
+
+        phi_unwrapped.push_back(candidatePhi);
+        _lineFitter.addPoint(z, candidatePhi, weight);
       }
 
+      if (_debugLevel > 0) {
+        std::cout << ">>> END OF UNWRAPPING TRACE <<<\n\n";
+      }
 
-      //Step E: phi–z fit using _lineFitter
+      // Step E: phi-z fit using _lineFitter
       _lineFitter.clear();
       for (size_t i = 0; i < hitIdx.size(); ++i) {
         size_t idx = hitIdx[i];
@@ -7806,130 +9858,296 @@ std::cout << std::setprecision(4)
         _lineFitter.addPoint(z, phi, w);
       }
 
-      //Step F: retrieve fit results
-      double dphidz     = _lineFitter.dydx();
-      double dphidzErr  = _lineFitter.dydxErr();
-      double phi0       = _lineFitter.y0();
-      double phi0Err    = _lineFitter.y0Err();
-      double chi2ndf    = _lineFitter.chi2Dof();
+      // Step F: retrieve fit results
+      double dphidz    = _lineFitter.dydx();
+      double dphidzErr = _lineFitter.dydxErr();
+      double phi0      = _lineFitter.y0();
+      double phi0Err   = _lineFitter.y0Err();
+      double chi2ndf   = _lineFitter.chi2Dof();
 
-      //Step G: debug print (strongly recommended)
-      std::cout << "SegmentIndex " << segIdx << std::endl;
-      std::cout << std::fixed << std::setprecision(7)
-                << "  dphi/dz = " << dphidz
-                << "  err = "    << dphidzErr
-                << std::endl;
+      std::string stageName = "Step G";
 
-      std::cout << "  phi0 = " << phi0
-                << "  err = " << phi0Err
-                << "  chi2/ndf = " << chi2ndf
-                << "  nHits = " << hitIdx.size()
-                << std::endl;
+      if (_debugLevel > 0) {
+        std::cout << "\n" << std::string(80, '=') << "\n";
+        std::cout << std::format(" [findHelix_ver3] {}: Segment Index {}\n",
+                                 stageName, segIdx);
+        std::cout << std::string(80, '-') << "\n";
 
+        std::cout << std::format("  {:<12} = {:<12.7f} +/- {:.7f}\n",
+                                 "dPhi/dZ", dphidz, dphidzErr);
+        std::cout << std::format("  {:<12} = {:<12.7f} +/- {:.7f}\n",
+                                 "Phi0", phi0, phi0Err);
+        std::cout << std::format("  {:<12} = {:<12.4f}\n",
+                                 "Chi2/NDF", chi2ndf);
+        std::cout << std::format("  {:<12} = {:<12}\n",
+                                 "nHits", hitIdx.size());
+
+        std::cout << std::string(80, '-') << "\n";
+        std::cout << std::format("{:<8} {:<15} {:<15} {:<15}\n",
+                                 "HitIdx", "Z [mm]", "HelixPhi", "PhiUnwrapped");
+        std::cout << std::string(80, '-') << "\n";
+      }
 
       for (size_t i = 0; i < hitIdx.size(); ++i) {
         size_t idx = hitIdx[i];
-        std::cout << "  z=" << _tcHits[idx].z
-                  << " helixPhi =" << _tcHits[idx].helixPhi
-                  << " phi_unwrapped=" << phi_unwrapped[i]
-                  << std::endl;
+
+        if (_debugLevel > 0) {
+          std::cout << std::format("{:<8} {:<15.4f} {:<15.7f} {:<15.7f}\n",
+                                   idx, _tcHits[idx].z,
+                                   _tcHits[idx].helixPhi, phi_unwrapped[i]);
+        }
+
+        // Critical update: store internally-unwrapped phi back to hit
         _tcHits[idx].helixPhi = phi_unwrapped[i];
       }
 
-      //Step H: weighted centroid
-      double sumW = 0.0;
-      double sumZ = 0.0;
-      double sumP = 0.0;
-
-      for (size_t i = 0; i < hitIdx.size(); ++i) {
-        size_t idx = hitIdx[i];
-        double w = 1.0 / _tcHits[idx].helixPhiError2;
-
-        sumW += w;
-        sumZ += w * _tcHits[idx].z;
-        sumP += w * phi_unwrapped[i];
+      if (_debugLevel > 0) {
+        std::cout << std::string(80, '=') << std::endl;
       }
-
-      double zCentroid   = sumZ / sumW;
-      double phiCentroid = sumP / sumW;
-
-      segIndexList.push_back(segIdx);
-      segZc.push_back(zCentroid);
-      segPhic.push_back(phiCentroid);
-      segdPhidZ.push_back(dphidz);
-      segPhi0.push_back(phi0);
-
-      // Debug print
-      std::cout << "SegmentIndex " << segIdx
-      << " z Center=" << zCentroid
-      << " phi Center=" << phiCentroid
-      << " nHits=" << hitIdx.size() << std::endl;
-
     }
 
-    // Step 3: align segment centroids by ±2π
-    if (segIndexList.empty()) return;
+    // Step 3: iteratively align and merge segments by ±2π
+    // Step 3: iteratively align and merge segments by ±2π
+    while (true) {
 
-    // Ste 4: choose the reference which has the largest number of hits
-    // work in progress
+      // ------------------------------------------------------------
+      // Step 3.1: find current unique segment indices
+      // ------------------------------------------------------------
+      std::set<int> currentSegments;
+      for (size_t i = 0; i < nComboHitsInSegment; ++i) {
+        if (!_tcHits[i].used) continue;
+        currentSegments.insert(_tcHits[i].segmentIndice);
+      }
 
-    int iRef = 0;
-    //double phiRef = segPhic[iRef];
-    //double zRef   = segZc[iRef];
-    std::cout << "segIndexList.size() = " << segIndexList.size() << std::endl;
-    for (size_t i = 0; i < segIndexList.size(); ++i) {
-    std::cout
-        << "SegmentIndex=" << segIndexList[i]
-        << "  zCenter=" << segZc[i]
-        << "  phiCenter=" << segPhic[i]
-        << "  dPhidZ=" << segdPhidZ[i]
-        << "  phi0=" << segPhi0[i]
-        << std::endl;
-}
+      if (_debugLevel > 0) {
+        std::cout << "\n=============================================\n";
+        std::cout << "Current number of segments = " << currentSegments.size() << "\n";
+        std::cout << "=============================================\n";
+      }
 
+      // No.1: if only 1 segment remains, stop
+      if (currentSegments.size() <= 1) break;
 
-    for (int i = 0; i < (int)segIndexList.size(); ++i) {
-      if(i == iRef){
-        for (int j = 0; j < (int)_tcHits.size(); j++) {
-          if (_tcHits[j].segmentIndice == segIndexList[iRef]) _tcHits[j].nturn = 0;
+      // ------------------------------------------------------------
+      // Step 3.2: for each segment, compute fit information
+      // ------------------------------------------------------------
+      std::vector<int>    curSegIndexList;
+      std::vector<int>    curSegNHits;
+      std::vector<double> curSegZc;
+      std::vector<double> curSegPhic;
+      std::vector<double> curSegdPhidZ;
+      std::vector<double> curSegPhi0;
+      std::vector<double> curSegdPhidZErr;
+      std::vector<double> curSegPhi0Err;
+      std::vector<double> curSegChi2;
+      std::vector<double> curSegPhiErr;
+
+      for (int segIdx : currentSegments) {
+        std::vector<size_t> hitIdx;
+
+        for (size_t i = 0; i < nComboHitsInSegment; ++i) {
+          if (!_tcHits[i].used) continue;
+          if (_tcHits[i].segmentIndice == segIdx) hitIdx.push_back(i);
+        }
+
+        if (hitIdx.size() < 2) continue;
+
+        std::sort(hitIdx.begin(), hitIdx.end(),
+                  [&](size_t a, size_t b) {
+                    return _tcHits[a].z < _tcHits[b].z;
+                  });
+
+        // fit current segment using already-unwrapped helixPhi
+        _lineFitter.clear();
+        double sumW = 0.0, sumZ = 0.0, sumP = 0.0;
+
+        for (size_t k = 0; k < hitIdx.size(); ++k) {
+          size_t idx = hitIdx[k];
+          double z   = _tcHits[idx].z;
+          double phi = _tcHits[idx].helixPhi;
+          double w   = 1.0 / _tcHits[idx].helixPhiError2;
+
+          _lineFitter.addPoint(z, phi, w);
+
+          sumW += w;
+          sumZ += w * z;
+          sumP += w * phi;
+        }
+
+        double zCentroid   = sumZ / sumW;
+        double phiCentroid = sumP / sumW;
+
+        curSegIndexList.push_back(segIdx);
+        curSegNHits.push_back((int)hitIdx.size());
+        curSegZc.push_back(zCentroid);
+        curSegPhic.push_back(phiCentroid);
+        curSegdPhidZ.push_back(_lineFitter.dydx());
+        curSegPhi0.push_back(_lineFitter.y0());
+        curSegdPhidZErr.push_back(_lineFitter.dydxErr());
+        curSegPhi0Err.push_back(_lineFitter.y0Err());
+        curSegChi2.push_back(_lineFitter.chi2Dof());
+        curSegPhiErr.push_back((sumW > 0.0) ? std::sqrt(1.0 / sumW) : 0.0);
+
+        if (_debugLevel > 0) {
+          std::cout << "Segment " << segIdx
+                    << " nHits=" << hitIdx.size()
+                    << " zC=" << zCentroid
+                    << " phiC=" << phiCentroid
+                    << " dphidz=" << _lineFitter.dydx()
+                    << " phi0=" << _lineFitter.y0()
+                    << " chi2=" << _lineFitter.chi2Dof()
+                    << "\n";
         }
       }
 
-      //predicted phi at z[i]
-      double predictPhi = segdPhidZ[iRef] * segZc[i] + segPhi0[iRef];
-      //double phi0 = segPhic[i];
-      //double deltaPhi = phi0 - phiRef;
-      double deltaPhi = predictPhi - segPhic[i];
-      int nturn = std::round(deltaPhi / (2 * M_PI));
+      if (curSegIndexList.size() <= 1) break;
 
-      std::cout << "i = " << i <<", Align segment " << segIndexList[i]
-                << " shift = " << nturn << "\n" <<std::endl;
-
-      // store shifted centroid if needed
-      //segPhic[i] = bestPhi;
-      for (int j = 0; j < (int)_tcHits.size(); j++) {
-        if (_tcHits[j].segmentIndice != segIndexList[i]) continue;
-        _tcHits[j].helixPhi = _tcHits[j].helixPhi + nturn * 2 * M_PI;
+      // ------------------------------------------------------------
+      // Step 3.3: choose reference segment = largest number of hits
+      // ------------------------------------------------------------
+      int iRef = 0;
+      for (int i = 1; i < (int)curSegIndexList.size(); ++i) {
+        if (curSegNHits[i] > curSegNHits[iRef]) iRef = i;
       }
+
+      int refSegIdx = curSegIndexList[iRef];
+
+      if (_debugLevel > 0) {
+        std::cout << "\nReference segment = " << refSegIdx
+                  << " with nHits = " << curSegNHits[iRef] << "\n";
+      }
+
+      // ------------------------------------------------------------
+      // Step 3.4: find the best segment to merge into the reference
+      // ------------------------------------------------------------
+      bool foundMerge = false;
+      int  bestSegArrayIndex = -1;
+      int  bestNturn = 0;
+      double bestResidual = 1.0e30;
+
+      for (int i = 0; i < (int)curSegIndexList.size(); ++i) {
+        if (i == iRef) continue;
+
+        double zc   = curSegZc[i];
+        double phiC = curSegPhic[i];
+
+        // predict phi at this segment centroid using reference segment fit
+        double predPhi = curSegdPhidZ[iRef] * zc + curSegPhi0[iRef];
+
+        double deltaPhi = predPhi - phiC;
+        int nturn = std::lround(deltaPhi / (2.0 * M_PI));
+
+        double shiftedPhi = phiC + nturn * 2.0 * M_PI;
+        double residual = std::abs(predPhi - shiftedPhi);
+
+        if (_debugLevel > 0) {
+          std::cout << " Test seg " << curSegIndexList[i]
+                    << " : predPhi=" << predPhi
+                    << " phiC=" << phiC
+                    << " deltaPhi=" << deltaPhi
+                    << " nturn=" << nturn
+                    << " shiftedPhi=" << shiftedPhi
+                    << " residual=" << residual
+                    << "\n";
+        }
+
+        double mergeThreshold = 15;  // rad, tune if needed
+        if (residual < mergeThreshold && residual < bestResidual) {
+          bestResidual = residual;
+          bestSegArrayIndex = i;
+          bestNturn = nturn;
+          foundMerge = true;
+        }
+      }
+
+      // if nothing can be merged, stop
+      if (!foundMerge) {
+        if (_debugLevel > 0) {
+          std::cout << "No more segments can be merged.\n";
+        }
+        break;
+      }
+
+      int mergeSegIdx = curSegIndexList[bestSegArrayIndex];
+
+      if (_debugLevel > 0) {
+        std::cout << "\nMerging segment " << mergeSegIdx
+                  << " into reference segment " << refSegIdx
+                  << " with nturn = " << bestNturn
+                  << " residual = " << bestResidual << "\n";
+      }
+
+      // ------------------------------------------------------------
+      // Step 3.5: shift all hits of that segment and renumber them
+      // ------------------------------------------------------------
+      for (size_t j = 0; j < nComboHitsInSegment; ++j) {
+        if (!_tcHits[j].used) continue;
+        if (_tcHits[j].segmentIndice != mergeSegIdx) continue;
+
+        _tcHits[j].helixPhi += bestNturn * 2.0 * M_PI;
+        _tcHits[j].segmentIndice = refSegIdx;
+        _tcHits[j].nturn    += bestNturn;
+      }
+
+      // loop again, because now the reference segment has more hits
+      // ------------------------------------------------------------
+      // Step 3.7: optional debug plot after each merge
+      // ------------------------------------------------------------
+      if (_debugLevel > 0) {
+        plot_PhiVsZ_alignment_step(tc, isegment,
+                                   bestSegArrayIndex,
+                                   mergeSegIdx,
+                                   curSegdPhidZ[iRef],
+                                   curSegPhi0[iRef]);
+      }
+
+      // then loop back and recompute everything from the new merged state
     }
 
-    //fit phi-z with corrected helixPhi after 2pi shift
-    _lineFitter.clear();
+      //fit phi-z with corrected helixPhi after 2pi shift
+      _lineFitter.clear();
+
+    if (_debugLevel > 0) {
+        std::cout << "\n=======================================================\n";
+        std::cout << "Final Phi-Z Fit (After 2pi Shifts Applied)\n";
+        std::cout << "-------------------------------------------------------\n";
+    }
+
     for(size_t i=0; i<nComboHitsInSegment; i++){
       if(_tcHits[i].used == false) continue;
+
       double z = _tcHits[i].z;
       double phi = _tcHits[i].helixPhi;
       double phiWeight = 1.0 / (_tcHits[i].helixPhiError2);
+
       _lineFitter.addPoint(z, phi, phiWeight);
-        std::cout << "  z=" << _tcHits[i].z
-                  << " helixPhi =" << _tcHits[i].helixPhi
-                  << std::endl;
+
+      // Debug printout for each hit
+      if (_debugLevel > 0) {
+          // Back-calculate the original unshifted phi for the printout
+          double originalPhi = phi - (_tcHits[i].nturn * 2.0 * M_PI);
+
+          std::cout << "  HitIdx="    << std::setw(3) << i
+                    << " | Seg="      << std::setw(2) << _tcHits[i].segmentIndice
+                    << " | Station="  << std::setw(2) << _tcHits[i].station // Update this if your variable is named differently
+                    << " | z="        << std::fixed << std::setprecision(3) << std::setw(8) << z
+                    << " | Orig Phi=" << std::setw(8) << originalPhi
+                    << " | n(turns)=" << std::setw(2) << _tcHits[i].nturn
+                    << " | Shifted Phi=" << std::setw(8) << phi
+                    << "\n";
+      }
     }
 
-      std::cout << "LineFitter "
-      << " dPhidZ =" << _lineFitter.dydx()
-      << " Phi0 =" << _lineFitter.y0()
-      << " chi2dZPhi =" << _lineFitter.chi2Dof() << std::endl;
+    if (_debugLevel > 0) {
+        std::cout << "-------------------------------------------------------\n";
+        std::cout << "LineFitter Result:"
+                  << " dPhidZ = " << _lineFitter.dydx()
+                  << " | Phi0 = " << _lineFitter.y0()
+                  << " | chi2dZPhi = " << _lineFitter.chi2Dof() << "\n";
+        std::cout << "=======================================================\n\n";
+    }
+
+
 
     } //end findHelix_ver3
 
@@ -9543,57 +11761,84 @@ for (int i = 0; i < _data.nSeeds(); ++i) {
       }
       for(int j=0; j<nSegments; j++){
         tcHitsFill(j);
-        findHelix_ver3(i, j);//maybe we can delete this ver2 as well (no need anymore),_hsColl is not filled, make sure if parametrs are added into _hsColl
-      //-----------------------------------------------
-      // Pre-selection on hits of helix candidate
-      //-----------------------------------------------
-      // Column widths (adjust as needed)
-      const int W1 = 12;
-      const int W = 14;
 
-      // Print header once
-      std::cout
-        << "-------------------------------------------------------------------------------------------------------------\n"
-        << std::left
-        << std::setw(W1) << "#Segment"
-        << std::setw(W)  << "segmentIndex"
-        << std::setw(W)  << "used"
-        << std::setw(W)  << "nturn"
-        << std::setw(W)  << "x"
-        << std::setw(W)  << "y"
-        << std::setw(W)  << "z"
-        << std::setw(W)  << "phi"
-        << std::setw(W)  << "helixPhi"
-        << std::setw(W)  << "helixPhiError2"
-        << "\n"
-        << "-------------------------------------------------------------------------------------------------------------\n";
+        //maybe we can delete this ver2 as well (no need anymore),_hsColl is not filled, make sure if parametrs are added into _hsColl
+        findHelix_ver3(i, j);
 
+        if (_debugLevel > 0 or _diagLevel > 0) {
+        // --- Header ---
+        std::cout << "\n" << std::string(130, '=') << "\n";
+        std::cout << std::format(" [Segment Hits Detail] Loop i: {}, Segment j: {}\n", i, j);
+        std::cout << std::string(130, '-') << "\n";
+        std::cout << std::format("{:<8} {:<10} {:<10} {:<8} {:<8} {:<12} {:<12} {:<12} {:<12} {:<12} {:<12}\n",
+                                 "Seg#", "HitIdx", "SimID", "Used", "nTurn", "X [mm]", "Y [mm]", "Z [mm]", "Phi [rad]", "HelixPhi", "Err2");
+        std::cout << std::string(130, '-') << "\n";
+
+        // --- Loop ---
         for (size_t k = 0; k < _tcHits.size(); ++k) {
+            const auto& h = _tcHits[k];
+            int simID = -999; // Default if MC is missing
 
-          const auto& h = _tcHits[k];
+            // --- MC Lookup Logic ---
+            // We need both the ComboHit collection and the MC collection to exist
+            if (_data.chcol && _data.sdmcColl) {
+                // 1. Get the ComboHit using your stored index
+                size_t chIndex = h.hitIndice;
 
-          std::cout << std::left
-            << std::setw(W1) << j
-            << std::setw(W)  << h.segmentIndice
-            << std::setw(W)  << h.used
-            << std::setw(W)  << h.nturn
-            << std::setw(W)  << h.x
-            << std::setw(W)  << h.y
-            << std::setw(W)  << h.z
-            << std::setw(W)  << h.phi
-            << std::setw(W)  << h.helixPhi
-            << std::setw(W)  << h.helixPhiError2
-            << "\n";
+                if (chIndex < _data.chcol->size()) {
+                    // 2. Get the underlying StrawDigi index
+                    // (ComboHits can combine multiple straws; .index(0) gets the first one)
+                    size_t digiIndex = _data.chcol->at(chIndex).index(0);
+
+                    // 3. Retrieve the SimID from the MC collection
+                    if (digiIndex < _data.sdmcColl->size()) {
+                        const auto& mcdigi = _data.sdmcColl->at(digiIndex);
+                        if (mcdigi.earlyStrawGasStep().isNonnull()) {
+                            simID = mcdigi.earlyStrawGasStep()->simParticle()->id().asInt();
+                        }
+                    }
+                }
+            }
+
+            // --- Print Row ---
+            std::cout << std::format("{:<8} {:<10} {:<10} {:<8} {:<8} {:<12.4f} {:<12.4f} {:<12.4f} {:<12.4f} {:<12.4f} {:<12.4f}\n",
+                                     j,
+                                     h.hitIndice,
+                                     simID,               // <--- The retrieved SimID
+                                     (h.used ? "YES" : "NO"),
+                                     h.nturn,
+                                     h.x,
+                                     h.y,
+                                     h.z,
+                                     h.phi,
+                                     h.helixPhi,
+                                     h.helixPhiError2);
         }
+        std::cout << std::string(130, '=') << std::endl;
+    }
 
-      plot_PhiVsZ_forSegment_ver3(i, j);
-      std::cout<<"Pre-selection"<<std::endl;
+        // --- (2) Diagnostic Plotting ---
+        plot_PhiVsZ_forSegment_ver3(i, j);
+        double xC = _circleFitter.x0();
+        double yC = _circleFitter.y0();
+        double rC = _circleFitter.radius();
+        plot_XVsY(i, j, "step10", xC, yC, rC);
+
+        // --- (3) Pre-selection based on Hit count ---
+        if (_debugLevel > 0) std::cout << "Pre-selection\n";
       int snhits = 0;
       for (size_t k = 0; k < _tcHits.size(); k++) {
             if(_tcHits[k].used == false) continue;
             snhits = snhits + _tcHits[k].strawhits;
       }
-      if(snhits < 15) continue;
+      if (_debugLevel > 0) {
+        std::cout << std::format("  -> Pre-selection Check: snhits = {} (Threshold: 15)\n", snhits);
+      }
+      if (snhits < 15) {
+        if (_debugLevel > 0) std::cout << "  -> Segment REJECTED (Too few hits)\n";
+        //continue;
+      }
+
         //define Helix
         //HelixSeed temp_hseed;
         //findHelix(i, j, *_hsColl);
@@ -9625,50 +11870,104 @@ for (int i = 0; i < _data.nSeeds(); ++i) {
           HelixSeed   _ev_hseed;
           //findHelix(i, j, *_hsColl, _ev_hseed);//maybe we can delete this function(no need anymore), _hsColl is not filled, make sure if parametrs are added into _hsColl
           //findHelix_ver2(i, j, *_hsColl, _ev_hseed);////maybe we can delete this ver2 as well (no need anymore),_hsColl is not filled, make sure if parametrs are added into _hsColl
+          // --- Calculate Helix Parameters ---
 
-          double xC = _circleFitter.x0();
-          double yC = _circleFitter.y0();
-          double rC = _circleFitter.radius();
-          _ev_hseed._helix._radius = rC;
-          _ev_hseed._helix._rcent  = sqrt(xC*xC + yC*yC);
-          _ev_hseed._helix._fcent  = polyAtan2(yC, xC);
-          //_ev_hseed._helix._lambda = 1.0/_dphidz;
-          //_ev_hseed._helix._fz0    = fz0;
-          _ev_hseed._helix._helicity = _ev_hseed._helix._lambda > 0 ? Helicity::poshel : Helicity::neghel;
-          _ev_hseed._helix._chi2dXY = _circleFitter.chi2DofCircle();
-          //_ev_hseed._helix._chi2dZPhi = _lineFitter.chi2Dof();
-          std::cout.setf(std::ios::fixed);
-          std::cout << std::setprecision(4)
-                << "[_ev_hseed Helix]\n"
-                << "  radius      = " << rC      << " [mm]\n"
-                << "  rcent       = " << _ev_hseed._helix._rcent       << " [mm]\n"
-                << "  fcent(rad)  = " << _ev_hseed._helix._fcent       << " [rad]\n"
-                << "  center(x,y) = (" << xC << ", " << yC << ") [mm]\n"
-                << "  dydx      = " <<  _lineFitter.dydx()  << " [mm/rad]\n"
-                << "  lambda      = " <<  1.0/_lineFitter.dydx()  << " [mm/rad]\n"
-                //<< "  fz0(rad)    = " << H._fz0         << " [rad]\n"
-                //<< "  tanDip      = " << tanDip         << " (= lambda/|radius|)\n"
-                //<< "  helicity    = " << (H._helicity==Helicity::poshel ? "poshel" : "neghel") << "\n"
-                //<< "  chi2dXY     = " << H._chi2dXY
-                << std::endl;
-        std::cout<<"CROSSCHECK111"<<std::endl;
-        if (_diagLevel > 0) {
-          //plot_PhiVsZ_forSegment(i, j);
-          //plot_CirclePhiVsZ_forSegment(i, j);
-          //plot_2PiAmbiguityPhiVsZ_forSegment(i, j);
-          //plot_RVsZ_forSegment(i, j);
+        _ev_hseed._helix._radius   = rC;
+        _ev_hseed._helix._rcent    = sqrt(xC*xC + yC*yC);
+        _ev_hseed._helix._fcent    = polyAtan2(yC, xC);
 
-          //plot here
-          //plot_2PiAmbiguityPhiVsZ_forSegment_mod(i, j);
-          plot_HelixPhiVsZ(i, j);
-        }
-        std::cout<<"CROSSCHECK222"<<std::endl;
+        // --- Z-Phi Line Fit Parameters ---
         _dphidz = _lineFitter.dydx();
-        _ev_hseed._helix._fz0    = _lineFitter.y0();
-        if (_ev_hseed._helix._fz0 > M_PI) { _ev_hseed._helix._fz0 = _ev_hseed._helix._fz0 - 2 * M_PI; }
-        if (_ev_hseed._helix._fz0 < -M_PI) { _ev_hseed._helix._fz0 = _ev_hseed._helix._fz0 + 2 * M_PI; }
-        _ev_hseed._helix._lambda = 1.0/_dphidz;
+        _ev_hseed._helix._fz0 = _lineFitter.y0();
+
+        // Apply 2*Pi wrapping to fz0
+        bool wrapped = false;
+        if (_ev_hseed._helix._fz0 >  M_PI) { _ev_hseed._helix._fz0 -= 2 * M_PI; wrapped = true; }
+        if (_ev_hseed._helix._fz0 < -M_PI) { _ev_hseed._helix._fz0 += 2 * M_PI; wrapped = true; }
+
+        // _ev_hseed._helix._lambda = 1.0 / _lineFitter.dydx(); // Preserved comment
+        // _ev_hseed._helix._fz0    = fz0;                     // Preserved comment
+
+        _ev_hseed._helix._lambda    = 1.0 / _dphidz;
         _ev_hseed._helix._chi2dZPhi = _lineFitter.chi2Dof();
+        _ev_hseed._helix._chi2dXY   = _circleFitter.chi2DofCircle();
+        _ev_hseed._helix._helicity  = (_ev_hseed._helix._lambda > 0) ? Helicity::poshel : Helicity::neghel;
+        // _ev_hseed._helix._chi2dZPhi = _lineFitter.chi2Dof(); // Preserved comment
+
+        // --- Debug Printout ---
+        // --- Debug Printout ---
+        if (_debugLevel > 0) {
+            std::cout << "\n" << std::string(60, '=') << "\n";
+            std::cout << std::format(" [Helix Fit Results] Segment (i: {}, j: {})\n", i, j);
+            std::cout << std::string(60, '-') << "\n";
+
+            std::cout << std::fixed << std::setprecision(4);
+            // Circle Fit Info
+            std::cout << std::format("  {:<18} = {:>10.4f} [mm]\n", "Radius", rC);
+            std::cout << std::format("  {:<18} = {:>10.4f} [mm]\n", "RCent", _ev_hseed._helix._rcent);
+            std::cout << std::format("  {:<18} = ({:.2f}, {:.2f}) [mm]\n", "Center (X,Y)", xC, yC);
+
+            // Line Fit Info
+            std::cout << std::format("  {:<18} = {:>10.4f} [rad/mm]\n", "dPhi/dZ", _dphidz);
+            std::cout << std::format("  {:<18} = {:>10.4f} [mm/rad]\n", "Lambda", _ev_hseed._helix._lambda);
+            std::cout << std::format("  {:<18} = {:>10.4f} [rad] {}\n", "fz0", _ev_hseed._helix._fz0, (wrapped ? "(2Pi Wrapped)" : ""));
+
+            // Quality Metrics
+            std::cout << std::string(60, '-') << "\n";
+            std::cout << std::format("  {:<18} = {:>10.4f}\n", "Chi2/DOF (XY)", _ev_hseed._helix._chi2dXY);
+            std::cout << std::format("  {:<18} = {:>10.4f}\n", "Chi2/DOF (ZPhi)", _ev_hseed._helix._chi2dZPhi);
+            std::cout << std::format("  {:<18} = {:>10}\n", "Helicity", (_ev_hseed._helix._helicity == Helicity::poshel ? "Positive" : "Negative"));
+            std::cout << std::string(60, '=') << std::endl;
+
+            // --- Future Use / Commented out variables ---
+            /*
+            std::cout << std::format("  {:<15} = {:>10.4f} [rad]\n", "fz0", _ev_hseed._helix._fz0);
+            std::cout << std::format("  {:<15} = {:>10}\n", "Helicity", (_ev_hseed._helix._helicity == Helicity::poshel ? "poshel" : "neghel"));
+            std::cout << std::format("  {:<15} = {:>10.4f}\n", "Chi2dXY", _ev_hseed._helix._chi2dXY);
+            */
+        }
+
+        // --- Diagnostic Plots ---
+        if (_diagLevel > 0) {
+            // plot_PhiVsZ_forSegment(i, j);
+            // plot_CirclePhiVsZ_forSegment(i, j);
+            // plot_2PiAmbiguityPhiVsZ_forSegment(i, j);
+            // plot_RVsZ_forSegment(i, j);
+
+            // Active Plots
+            // plot_2PiAmbiguityPhiVsZ_forSegment_mod(i, j);
+            plot_HelixPhiVsZ(i, j);
+        }
+
+        std::cout<<"CROSSCHECK222"<<std::endl;
+            // Print Header using std::format
+            std::cout << std::format("{:<8} {:<10} {:<8} {:<8} {:<12} {:<12} {:<12} {:<12} {:<12} {:<12}\n",
+                                     "Seg#", "HitID", "Used", "nTurn", "X [mm]", "Y [mm]", "Z [mm]", "Phi [rad]", "HelixPhi", "Err2");
+            std::cout << std::string(115, '-') << "\n";
+
+            // Print Rows using std::format
+            _lineFitter.clear();
+            for (const auto& h : _tcHits) {
+                std::cout << std::format("{:<8} {:<10} {:<8} {:<8} {:<12.4f} {:<12.4f} {:<12.4f} {:<12.4f} {:<12.4f} {:<12.4f}\n",
+                                         j,
+                                         h.segmentIndice,
+                                         (h.used ? "YES" : "NO"),
+                                         h.nturn,
+                                         h.x,
+                                         h.y,
+                                         h.z,
+                                         h.phi,
+                                         h.helixPhi,
+                                         h.helixPhiError2);
+      double phiWeight = 1.0 / (h.helixPhiError2);
+      _lineFitter.addPoint(h.z, h.helixPhi, phiWeight);
+
+            }
+            std::cout << std::string(115, '=') << std::endl;
+      std::cout << "LineFitter "
+      << " dPhidZ =" << _lineFitter.dydx()
+      << " Phi0 =" << _lineFitter.y0()
+      << " chi2dZPhi =" << _lineFitter.chi2Dof() << std::endl;
 
         //saveHelix(i, _ev_hseed);//_hsColl is not filled, make sure if parametrs are added into _hsColl
     //HelixSeed hseed;
@@ -9684,6 +11983,7 @@ for (int i = 0; i < _data.nSeeds(); ++i) {
       const ComboHit* hit = &_data.chcol->at(hitIndice);
       fitter.addPoint(hit->pos().z(), hit->correctedTime(), 1 / (hit->timeRes() * hit->timeRes()));
       ComboHit hhit(*hit);
+      //hhit._hphi = 33.33;
       hhit._hphi = _tcHits[m].helixPhi;
       _ev_hseed._hhits.push_back(hhit);
     }
@@ -9712,7 +12012,12 @@ for (int i = 0; i < _data.nSeeds(); ++i) {
       double      mm2MeV   = 3/10.;
       double      pT       = radius*mm2MeV;
       double      p        = pT/std::cos( std::atan(tanDip));
-      if(p < 50) continue;
+      std::cout<<"p  = "<<p<<std::endl;
+      std::cout<<"pT  = "<<pT<<std::endl;
+      //if(p < 50) continue;
+      //if(pT < 50) continue;
+      if (_ev_hseed._helix._chi2dXY > 5) continue;
+      if (_ev_hseed._helix._chi2dZPhi > 5) continue;
     if (abs(lambda) <  100.) std::cout<<"0_CHECKKK__lambda<100 "<<std::endl;
     if (abs(lambda) >  1500.) std::cout<<"1_CHECKKK__lambda>1500 "<<std::endl;
     if (pT <  40.) std::cout<<"2_CHECKKK__pT<40 "<<std::endl;
