@@ -90,6 +90,7 @@ namespace mu2e {
       art::InputTag                 tcCollTag;
 
       const ComboHitCollection*     chcol;
+      const ComboHitCollection*     chfcol;   // flagged CH (DeltaFinder/FlagBkgHits), index-aligned with chcol; may be null
       const TimeClusterCollection*  tccol;
       const StrawDigiMCCollection*  sdmcColl;
 

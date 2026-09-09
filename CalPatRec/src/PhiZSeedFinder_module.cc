@@ -114,6 +114,7 @@ namespace mu2e {
       using Comment = fhicl::Comment;
       fhicl::Atom<art::InputTag>   shCollTag              {Name("shCollTag"        )     , Comment("StrawHit collection tag" ) };
       fhicl::Atom<art::InputTag>   chCollTag              {Name("chCollTag"          )     , Comment("ComboHit collection tag"    ) };
+      fhicl::Atom<art::InputTag>   chfCollTag             {Name("chfCollTag"         )     , Comment("flagged ComboHit collection tag (DeltaFinder/FlagBkgHits output)"), art::InputTag("FlagBkgHits") };
       fhicl::Atom<art::InputTag>   tcCollTag              {Name("tcCollTag"          )     , Comment("time cluster collection tag") };
       fhicl::Atom<art::InputTag>   sdmcCollTag            {Name("sdmcCollTag"        )             , Comment("StrawDigiMC collection tag" ) };
       fhicl::Atom<int>             debugLevel             {Name("debugLevel"         )     , Comment("debug level"                ) };
@@ -355,6 +356,7 @@ namespace mu2e {
 //-----------------------------------------------------------------------------
     art::InputTag     _shCollTag;
     art::InputTag    _chCollTag;
+    art::InputTag    _chfCollTag;                // flagged ComboHit coll (DeltaFinder/FlagBkgHits)
     art::InputTag    _tcCollTag;                 // time cluster coll tag
     art::InputTag    _sdmcCollTag;
     int              _writeFilteredComboHits;   // write filtered combo hits
@@ -472,6 +474,7 @@ namespace mu2e {
     void tcHitsFill(int isegment);
     void tcHitsFill_Add(int isegment);
     void plot_PhiVsZ_OriginalTC(int tc);
+    void plot_PhiVsZ_DeltaFlaggedTC(int tc);
     void plot_HelixPhiVsZ(int TC, int isegment);
     void plot_PhiVsZ_forSegment(int tc, int isegment);
     void plot_PhiVsZ_forSegment_ver2(int ith_segment, int jth_segment, double alpha, double beta, double Chi2NDF);
@@ -571,6 +574,7 @@ namespace mu2e {
     art::EDProducer{config},
     _shCollTag             (config().shCollTag()         ),
     _chCollTag             (config().chCollTag()         ),
+    _chfCollTag            (config().chfCollTag()        ),
     _tcCollTag             (config().tcCollTag()         ),
     _sdmcCollTag           (config().sdmcCollTag()       ),
     _debugLevel            (config().debugLevel()        ),
@@ -596,6 +600,7 @@ namespace mu2e {
       }
     consumes<TimeClusterCollection>(_tcCollTag);
     consumes<ComboHitCollection>   (_chCollTag);
+    mayConsume<ComboHitCollection> (_chfCollTag);
     //produces<TimeClusterCollection>();
     //produces<HelixSeedCollection>();
     _finder = new PhiZSeedFinderAlg(config().finderParameters,&_data);
@@ -645,6 +650,13 @@ namespace mu2e {
     _data.tccol = tccH.product();
     auto chcH = Evt.getValidHandle<mu2e::ComboHitCollection>(_chCollTag);
     _data.chcol = chcH.product();
+    //-----------------------------------------------------------------------------
+    // flagged ComboHits (DeltaFinder / FlagBkgHits output): optional, index-aligned
+    // with _data.chcol. Used only for diagnostics (plot_PhiVsZ_DeltaFlaggedTC).
+    //-----------------------------------------------------------------------------
+    _data.chfcol = nullptr;
+    art::Handle<mu2e::ComboHitCollection> chfH;
+    if (Evt.getByLabel(_chfCollTag, chfH)) _data.chfcol = chfH.product();
     if (_diagLevel == 1) {
       auto sdmccH = Evt.getValidHandle<StrawDigiMCCollection>(_sdmcCollTag);
       _data.sdmcColl   = sdmccH.product();
@@ -6770,6 +6782,92 @@ void PhiZSeedFinder::plot_PhiVsZ_OriginalTC(int tc){
   delete gr;
   for(int j=0; j<18; j++) delete line[j];
 }
+//-----------------------------------------------------------------------------
+// Phi vs Z of the original-TimeCluster combo hits, colored by the flags set by
+// DeltaFinder (module label "FlagBkgHits" / "flagPH"):
+//   red   = delta electron hit (StrawHitFlag::bkg set)
+//   blue  = proton hit         (StrawHitFlag::energysel cleared)
+//   black = good hit
+// Does not use MC truth, so it also works on data. Falls back to the unflagged
+// ComboHit collection if the flagged one is not available (then only 'delta' is
+// meaningful and everything else is drawn black).
+//-----------------------------------------------------------------------------
+void PhiZSeedFinder::plot_PhiVsZ_DeltaFlaggedTC(int tc){
+  const ComboHitCollection* fc = (_data.chfcol != nullptr) ? _data.chfcol : _data.chcol;
+  const bool haveFlags = (_data.chfcol != nullptr);
+  const int  n = (int)_data.tccol->at(tc)._strawHitIdxs.size();
+
+  TGraph* gr = new TGraph(n);
+  gr->SetTitle("");
+  gr->SetMarkerStyle(1);
+
+  std::vector<int> marker_color(n, kBlack);
+  int nDelta(0), nProton(0), nGood(0);
+
+  double phi, z;
+  for (int i = 0; i < n; i++) {
+    int hitIndice = _data.tccol->at(tc)._strawHitIdxs[i];
+    const ComboHit& ch = fc->at(hitIndice);
+    z   = ch.pos().z();
+    phi = ch.pos().phi();
+    gr->SetPoint(i, z, phi);
+
+    const StrawHitFlag& f = ch.flag();
+    bool isDelta  = f.hasAnyProperty(StrawHitFlag::bkg);
+    bool isProton = haveFlags && (! f.hasAnyProperty(StrawHitFlag::energysel));
+    if      (isDelta ) { marker_color[i] = kRed;   nDelta++;  }
+    else if (isProton) { marker_color[i] = kBlue;  nProton++; }
+    else               { marker_color[i] = kBlack; nGood++;   }
+  }
+
+  //Draw
+  TCanvas* canvas = new TCanvas("canvas", "", 800, 600);
+  canvas->SetMargin(0.1, 0.1, 0.1, 0.1);
+  gr->Draw("AP");
+
+  TMarker* m;
+  for (int i = 0; i < n; i++) {
+    gr->GetPoint(i, z, phi);
+    m = new TMarker(z, phi, 20);
+    m->SetMarkerStyle(20);
+    m->SetMarkerSize(0.9);
+    m->SetMarkerColor(marker_color[i]);
+    m->Draw();
+  }
+  gr->GetXaxis()->SetTitle("Z [mm]");
+  gr->GetYaxis()->SetTitle("Hit Phi [rad]");
+  gr->GetXaxis()->SetLimits(-1600, 1600);
+  gr->GetYaxis()->SetRangeUser(-M_PI, M_PI);
+
+  TPaveText* title = new TPaveText(0.1, 0.92, 0.9, 0.98, "NDC");
+  title->AddText(Form("Phi vs. Z, DeltaFinder flags (Run-subRun-Event, TC) = (%d-%d-%d, #%d)  "
+                      "delta=%d proton=%d good=%d%s",
+                      run, subrun, eventNumber, tc, nDelta, nProton, nGood,
+                      haveFlags ? "" : "  [no flagged coll]"));
+  title->SetFillColor(0);
+  title->SetTextAlign(22);
+  title->Draw("same");
+
+  double stations_x[18] = {-1518.320, -1344.320, -1170.320, -996.320, -822.320, -648.320, -474.320, -300.320, -126.320, 47.680, 221.680, 395.680, 569.680, 743.680, 917.680, 1091.680, 1265.680, 1439.680};
+  TLine* line[18];
+  for(int j=0; j<18; j++){
+    double x = stations_x[j];
+    line[j] = new TLine(x, -M_PI, x, M_PI);
+    line[j]->SetLineStyle(2);
+    line[j]->SetLineWidth(1);
+    line[j]->SetLineColor(kBlack);
+    line[j]->Draw("same");
+  }
+
+  const char* outdir = "/exp/mu2e/data/users/kitagawa/output/20240424/PhiZSeedFinder/pbar/PhiVsZ/delta_flagged";
+  gSystem->mkdir(outdir, kTRUE);                 // create the directory tree if needed
+  canvas->SaveAs(Form("%s/pbar_PhiVsZ-%04d-%04d-%06d_TC-%d.pdf", outdir, run, subrun, eventNumber, tc));
+
+  //delete
+  delete canvas;
+  delete gr;
+  for(int j=0; j<18; j++) delete line[j];
+}
 //----------------------------------------------------------------------------
 void PhiZSeedFinder::plot_PhiVsZ_RawStep(const std::vector<std::vector<ev5_HitsInNthStation>>& segments,
                                          const std::string& stepName,
@@ -11678,6 +11776,7 @@ for (int i = 0; i < _data.nSeeds(); ++i) {
       // for diagnostic
       //--------------------
       if(_diagLevel > 0) plot_PhiVsZ_OriginalTC(i);//(1)HelixPhi vs. Z, (2)Phi vs. Z, can be removed in the future
+      if(_diagLevel > 0) plot_PhiVsZ_DeltaFlaggedTC(i);// same hits, colored by DeltaFinder (delta/proton) flags
       //--------------------
       // Pre-selection on strawhits
       //--------------------

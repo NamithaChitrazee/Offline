@@ -305,6 +305,7 @@ CalPatRec : { @table::CalPatRec
 #------------------------------------------------------------------------------
         PhiZSeedFinder : { module_type:PhiZSeedFinder
             chCollTag                   : "makePH"              ## input CH coll
+            chfCollTag                  : "FlagBkgHits"         ## flagged CH coll (DeltaFinder/FlagBkgHits), diag only
             tcCollTag                   : "TZClusterFinder"
             shCollTag                   : "makeSH"              ## input single-straw CH coll
             sdmcCollTag                 : "compressDigiMCs"     ## used for debug only
