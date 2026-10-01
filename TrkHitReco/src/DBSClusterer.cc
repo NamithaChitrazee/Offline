@@ -35,8 +35,7 @@ namespace mu2e
 
   //----------------------------------------------------------------------------------------------------------
   void DBSClusterer::findClusters(BkgClusterCollection& clusters, const ComboHitCollection& chcol)
-  {
-     if (chcol.empty()) return;
+  {  if (chcol.empty()) return;
 
      std::vector<unsigned> idx; // list of combo hit IDs
      idx.reserve(chcol.size());
@@ -220,7 +219,7 @@ namespace mu2e
     // Code logic to classify cluster with MVA
     // Clusters with less than 3 combo hits have a default keras quality of 0.0
     // and they are not flagged as background clusters
-    if(cluster.hits().size() < 3) {
+    if(cluster.hits().size() < 5) {
       cluster.setKerasQ(0.0);
       return;
     }

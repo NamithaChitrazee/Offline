@@ -11,8 +11,8 @@ TrkHitReco :{
       DBSminExpand    : 1
       DeltaTime       : 30
       DeltaZ          : 200
-      DeltaXY         : 50
-      MinClusterHits  : 1
+      DeltaXY         : 100
+      MinClusterHits  : 2
       TestFlag        : false
       BackgroundMask  : []
       SignalMask      : ["TimeSelection", "EnergySelection", "RadiusSelection"]
@@ -166,7 +166,7 @@ TrkHitReco : {
       MinEdep              : 0.003
       MinHits              : 5
       MinFrac              : 0.5
-      KerasQuality         : 0.8
+      KerasQuality         : 0.6
       DebugLevel           : 0
    }
 }
