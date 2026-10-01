@@ -17,6 +17,7 @@ TrkHitReco :{
       BackgroundMask  : []
       SignalMask      : ["TimeSelection", "EnergySelection", "RadiusSelection"]
       KerasWeights    : "Offline/TrkHitReco/data/TrainBkgDiag.dat"
+      NormFile        : "Offline/TrkHitReco/data/TrainBkgDiagNorm.dat"
    }
 
    TNTClusterer : {

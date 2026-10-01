@@ -3,6 +3,8 @@
 #include "Offline/TrkHitReco/inc/TrainBkgDiag.hxx"
 
 #include <algorithm>
+#include <fstream>
+#include <stdexcept>
 #include <vector>
 #include <limits>
 
@@ -19,6 +21,7 @@ namespace mu2e
     sigmask_          (config.value().sigmsk()),
     testflag_         (config.value().testflag()),
     kerasW_           (config.value().kerasWeights()),
+    normFile_         (config.value().normFile()),
     diag_             (config.value().diag())
   {
   }
@@ -26,10 +29,18 @@ namespace mu2e
 
   //---------------------------------------------------------------------------------------
   void DBSClusterer::init() {
-    // Add Classifier init here (see TNTClusterer for example)
      ConfigFileLookupPolicy configFile;
      auto kerasWgtsFile = configFile(kerasW_);
      sofiePtr_          = std::make_shared<TMVA_SOFIE_TrainBkgDiag::Session>(kerasWgtsFile);
+
+     std::ifstream fin(configFile(normFile_));
+     if (!fin.is_open())
+       throw std::runtime_error("DBSClusterer: cannot open normalization file: " + normFile_);
+     std::string varName;
+     for (int i = 0; i < 7; ++i) {
+       if (!(fin >> varName >> normMeans_[i] >> normSigmas_[i]))
+         throw std::runtime_error("DBSClusterer: failed reading normalization file at entry " + std::to_string(i));
+     }
   }
 
 
@@ -264,6 +275,8 @@ namespace mu2e
     kerasvars[4] = std::sqrt((sqrSumDeltaX+sqrSumDeltaY)/nchits); // RMS of cluster rho
     kerasvars[5] = std::sqrt(sqrSumDeltaTime/nchits); // RMS of cluster time
     kerasvars[6] = std::sqrt(sqrSumDeltaPhi/nchits); // RMS of cluster phi
+    for (int i = 0; i < 7; ++i)
+      kerasvars[i] = (kerasvars[i] - normMeans_[i]) / normSigmas_[i];
     std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
     cluster.setKerasQ(kerasout[0]);
   }

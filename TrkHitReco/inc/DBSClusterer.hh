@@ -11,6 +11,7 @@
 #include "Offline/RecoDataProducts/inc/StrawDigi.hh"
 #include "Offline/TrkHitReco/inc/BkgClusterer.hh"
 
+#include <array>
 #include <string>
 
 
@@ -39,6 +40,7 @@ namespace mu2e {
         fhicl::Sequence<std::string>  sigmsk{           Name("SignalMask"),       Comment("Signal hit selection mask") };
         fhicl::Atom<bool>             testflag{         Name("TestFlag"),         Comment("Test hit flags") };
         fhicl::Atom<std::string>      kerasWeights{     Name("KerasWeights"),     Comment("Weights for keras model") };
+        fhicl::Atom<std::string>      normFile{         Name("NormFile"),         Comment("Normalization file for MVA inputs") };
         fhicl::Atom<int>              diag{             Name("Diag"),             Comment("Diagnosis level"),0 };
       };
 
@@ -65,7 +67,10 @@ namespace mu2e {
       StrawHitFlag            sigmask_;
       bool                    testflag_;
       std::string             kerasW_;
+      std::string             normFile_;
       int                     diag_;
+      std::array<float,7>     normMeans_;
+      std::array<float,7>     normSigmas_;
       std::shared_ptr<TMVA_SOFIE_TrainBkgDiag::Session> sofiePtr_;
   };
 }
