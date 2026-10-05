@@ -36,6 +36,7 @@ namespace mu2e {
         fhicl::Atom<float>            hitDeltaZ{        Name("DeltaZ"),           Comment("Max Z difference between hits") };
         fhicl::Atom<float>            hitDeltaXY{       Name("DeltaXY"),          Comment("Max XY difference between hits") };
         fhicl::Atom<unsigned>         minClusterHits{   Name("MinClusterHits"),   Comment("Min number hits in cluster") };
+        fhicl::Atom<unsigned>         minHitsInCluster{ Name("MinHitsInCluster"), Comment("Min combo hits required to compute cluster properties and run MVA") };
         fhicl::Sequence<std::string>  bkgmsk{           Name("BackgroundMask"),   Comment("Bkg hit selection mask") };
         fhicl::Sequence<std::string>  sigmsk{           Name("SignalMask"),       Comment("Signal hit selection mask") };
         fhicl::Atom<bool>             testflag{         Name("TestFlag"),         Comment("Test hit flags") };
@@ -57,13 +58,13 @@ namespace mu2e {
     private:
       struct HitData { float time, x, y, z; unsigned nsh, chIdx; };
       unsigned findNeighbors    (unsigned ihit, size_t istart, const std::vector<HitData>& hitCache, std::vector<unsigned>& neighbors);
-      void     calculateCluster (BkgCluster& cluster, const ComboHitCollection& chcol);
 
       unsigned                DBSminExpand_;
       float                   deltaTime_;
       float                   deltaZ_;
       float                   deltaXY2_;
       unsigned                minClusterHits_;
+      unsigned                minHitsInCluster_;
       StrawHitFlag            bkgmask_;
       StrawHitFlag            sigmask_;
       bool                    testflag_;

@@ -13,6 +13,7 @@ TrkHitReco :{
       DeltaZ          : 200
       DeltaXY         : 100
       MinClusterHits  : 2
+      MinHitsInCluster: 5
       TestFlag        : false
       BackgroundMask  : []
       SignalMask      : ["TimeSelection", "EnergySelection", "RadiusSelection"]

@@ -19,6 +19,7 @@ namespace mu2e
     deltaZ_           (config.value().hitDeltaZ()),
     deltaXY2_         (config.value().hitDeltaXY()*config.value().hitDeltaXY()),
     minClusterHits_   (config.value().minClusterHits()),
+    minHitsInCluster_ (config.value().minHitsInCluster()),
     bkgmask_          (config.value().bkgmsk()),
     sigmask_          (config.value().sigmsk()),
     testflag_         (config.value().testflag()),
@@ -166,8 +167,6 @@ namespace mu2e
          ++currentClusterID;
        }
      }
-     // Calculate the cluster properties
-     for (auto& cluster : clusters) calculateCluster(cluster, chcol);
   }
 
   //---------------------------------------------------------------------------------------
@@ -205,109 +204,99 @@ namespace mu2e
 
 
   //---------------------------------------------------------------------------------------
-  void DBSClusterer::calculateCluster(BkgCluster& cluster, const ComboHitCollection& chcol)
+  // Compute cluster position/time and run the MVA classifier in a single call.
+  // Clusters below minHitsInCluster_ get zeroed defaults and no MVA score.
+  // Two loops are unavoidable: the second needs the cluster centre set by the first.
+  void DBSClusterer::classifyCluster(BkgCluster& cluster, const ComboHitCollection& chcol)
   {
-    if (cluster.hits().empty()) {cluster.time(0.0f);cluster.pos(XYZVectorF(0.0f,0.0f,0.0f));return;}
-    if (cluster.hits().size()==1) {
-      int idx = cluster.hits().at(0);
-      cluster.time(chcol[idx].correctedTime());
-      cluster.edep(chcol[idx].energyDep());
-      cluster.pos(XYZVectorF(chcol[idx].pos().x(),chcol[idx].pos().y(),chcol[idx].pos().z()));
-      XYZVectorF hitpos(chcol[idx].pos().x(), chcol[idx].pos().y(), chcol[idx].pos().z());
-      cluster.addHitPosition(hitpos);
+    if (cluster.hits().size() < minHitsInCluster_) {
+      cluster.time(0.0f);
+      cluster.pos(XYZVectorF(0.0f, 0.0f, 0.0f));
+      cluster.setKerasQ(0.0);
       return;
     }
-    float sumWeight(0),crho(0),ctime(0), cz(0), cedep(0), cphi(0);
-    float phi_ref = chcol[cluster.hits().at(0)].phi();
-    for (auto& hitIdx : cluster.hits()) {
-      float weight = chcol[hitIdx].nStrawHits();
-      float dt     = chcol[hitIdx].correctedTime();
-      float dr     = sqrtf(chcol[hitIdx].pos().perp2());
-      float dz     = chcol[hitIdx].pos().z();
-      float edep   = chcol[hitIdx].energyDep();
 
-      XYZVectorF hitpos = chcol[hitIdx].pos();
+    // Loop 1: weighted cluster centre + quantities that don't need the centre
+    float sumWeight(0), crho(0), ctime(0), cz(0), cedep(0), cphi(0);
+    float phi_ref = chcol[cluster.hits().at(0)].phi();
+    float zmin = std::numeric_limits<float>::max();
+    float zmax = -std::numeric_limits<float>::max();
+    unsigned nhits(0);
+    unsigned nchits = cluster.hits().size();
+
+    for (auto& hitIdx : cluster.hits()) {
+      const auto& hit = chcol[hitIdx];
+      float weight = hit.nStrawHits();
+      float dt     = hit.correctedTime();
+      float dr     = sqrtf(hit.pos().perp2());
+      float dz     = hit.pos().z();
+      float edep   = hit.energyDep();
+
+      XYZVectorF hitpos = hit.pos();
       cluster.addHitPosition(hitpos);
 
       float dp   = hitpos.phi();
       float dphi = dp - phi_ref;
       if (dphi > M_PI)  dphi -= 2*M_PI;
       if (dphi < -M_PI) dphi += 2*M_PI;
-      float correctedPhi = phi_ref + dphi;
 
-      ctime    += dt*weight;
-      crho     += dr*weight;
-      cphi     += correctedPhi*weight;
-      cz       += dz*weight;
-      cedep    += edep*weight;
+      ctime     += dt*weight;
+      crho      += dr*weight;
+      cphi      += (phi_ref + dphi)*weight;
+      cz        += dz*weight;
+      cedep     += edep*weight;
       sumWeight += weight;
+
+      nhits += hit.nStrawHits();
+      if (dz < zmin) zmin = dz;
+      if (dz > zmax) zmax = dz;
     }
+
     cphi  /= sumWeight;
     crho  /= sumWeight;
     ctime /= sumWeight;
     cz    /= sumWeight;
-    cedep /= sumWeight; //Weighted average energy deposition of a cluster
+    cedep /= sumWeight;
 
     if (cphi > M_PI)  cphi -= 2*M_PI;
     if (cphi < -M_PI) cphi += 2*M_PI;
 
     cluster.time(ctime);
-    cluster.pos(XYZVectorF(crho*cos(cphi),crho*sin(cphi),cz));
+    cluster.pos(XYZVectorF(crho*cos(cphi), crho*sin(cphi), cz));
     cluster.edep(cedep);
-  }
 
-
-  //---------------------------------------------------------------------------------------
-  void DBSClusterer::classifyCluster(BkgCluster& cluster, const ComboHitCollection& chcol){
-
-    // Code logic to classify cluster with MVA
-    // Clusters with less than 3 combo hits have a default keras quality of 0.0
-    // and they are not flagged as background clusters
-    if(cluster.hits().size() < 5) {
-      cluster.setKerasQ(0.0);
-      return;
-    }
-    // find averages
-    double sqrSumDeltaTime(0.),sqrSumDeltaX(0.), sqrSumDeltaY(0.), sqrSumDeltaPhi(0.);
-    unsigned nhits(0);
-    float zmin = std::numeric_limits<float>::max();
-    float zmax = -std::numeric_limits<float>::max();
+    // Loop 2: MVA input variables that require the cluster centre
+    double sqrSumDeltaTime(0.), sqrSumDeltaX(0.), sqrSumDeltaY(0.), sqrSumDeltaPhi(0.);
     float phimin = std::numeric_limits<float>::max();
     float phimax = -std::numeric_limits<float>::max();
     float phiclust = cluster.pos().phi();
-    if(phiclust > M_PI) phiclust -=2*M_PI;
-    if(phiclust < -M_PI) phiclust +=2*M_PI;
-    // Safe: Clusters with < 3 hits are returned earlier
-    unsigned nchits = cluster.hits().size();
+    if (phiclust > M_PI)  phiclust -= 2*M_PI;
+    if (phiclust < -M_PI) phiclust += 2*M_PI;
+
     for (const auto& chit : cluster.hits()) {
       const auto& hit = chcol[chit];
-      nhits += hit.nStrawHits();
-      float hZ = hit.pos().Z();
-      if (hZ < zmin) zmin = hZ;
-      if (hZ > zmax) zmax = hZ;
       float dx = hit.pos().x() - cluster.pos().x();
       float dy = hit.pos().y() - cluster.pos().y();
       float dt = hit.correctedTime() - cluster.time();
       sqrSumDeltaX    += dx*dx;
       sqrSumDeltaY    += dy*dy;
       sqrSumDeltaTime += dt*dt;
-      float phihit = hit.phi();
-      float dphi_rel = phihit- phiclust;
-      if(dphi_rel > M_PI)  dphi_rel -= 2*M_PI;
-      if(dphi_rel < -M_PI) dphi_rel += 2*M_PI;
-      if(dphi_rel < phimin) phimin = dphi_rel;
-      if(dphi_rel > phimax) phimax = dphi_rel;
-      sqrSumDeltaPhi  += dphi_rel*dphi_rel;
+      float dphi_rel = hit.phi() - phiclust;
+      if (dphi_rel > M_PI)  dphi_rel -= 2*M_PI;
+      if (dphi_rel < -M_PI) dphi_rel += 2*M_PI;
+      if (dphi_rel < phimin) phimin = dphi_rel;
+      if (dphi_rel > phimax) phimax = dphi_rel;
+      sqrSumDeltaPhi += dphi_rel*dphi_rel;
     }
-    // Fill mva input variables
+
     std::array<float,7> kerasvars;
-    kerasvars[0] = cluster.pos().Rho(); // cluster rho, cyl coor
-    kerasvars[1] = zmax - zmin; // zdiff
-    kerasvars[2] = phimax - phimin; // phidiff;
+    kerasvars[0] = cluster.pos().Rho();
+    kerasvars[1] = zmax - zmin;
+    kerasvars[2] = phimax - phimin;
     kerasvars[3] = nhits;
-    kerasvars[4] = std::sqrt((sqrSumDeltaX+sqrSumDeltaY)/nchits); // RMS of cluster rho
-    kerasvars[5] = std::sqrt(sqrSumDeltaTime/nchits); // RMS of cluster time
-    kerasvars[6] = std::sqrt(sqrSumDeltaPhi/nchits); // RMS of cluster phi
+    kerasvars[4] = std::sqrt((sqrSumDeltaX+sqrSumDeltaY)/nchits);
+    kerasvars[5] = std::sqrt(sqrSumDeltaTime/nchits);
+    kerasvars[6] = std::sqrt(sqrSumDeltaPhi/nchits);
     for (int i = 0; i < 7; ++i)
       kerasvars[i] = (kerasvars[i] - normMeans_[i]) / normSigmas_[i];
     std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
