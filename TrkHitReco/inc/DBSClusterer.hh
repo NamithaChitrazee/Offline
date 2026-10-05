@@ -55,7 +55,8 @@ namespace mu2e {
 
 
     private:
-      unsigned findNeighbors    (unsigned ihit, const std::vector<unsigned>& idx, const ComboHitCollection& chcol, std::vector<unsigned>& neighbors);
+      struct HitData { float time, x, y, z; unsigned nsh, chIdx; };
+      unsigned findNeighbors    (unsigned ihit, size_t istart, const std::vector<HitData>& hitCache, std::vector<unsigned>& neighbors);
       void     calculateCluster (BkgCluster& cluster, const ComboHitCollection& chcol);
 
       unsigned                DBSminExpand_;

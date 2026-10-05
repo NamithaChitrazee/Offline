@@ -88,6 +88,25 @@ namespace mu2e
        }
      }
 
+     // Build a compact, contiguous cache of the fields findNeighbors() needs.
+     // Avoids repeated ComboHit dereferences in the hot loop.
+     std::vector<HitData> hitCache;
+     hitCache.reserve(idx.size());
+     for (unsigned chIdx : idx) {
+       const auto& h = chcol[chIdx];
+       hitCache.push_back({h.correctedTime(), h.pos().x(), h.pos().y(), h.pos().z(),
+                           h.nStrawHits(), chIdx});
+     }
+
+     // Precompute lower-bound start indices in O(N) via a two-pointer scan so
+     // findNeighbors() no longer pays O(log N) per call.
+     std::vector<size_t> lowerBound(hitCache.size(), 0);
+     for (size_t i = 0, j = 0; i < hitCache.size(); ++i) {
+       float minTime = hitCache[i].time - deltaTime_;
+       while (j < hitCache.size() && hitCache[j].time < minTime) ++j;
+       lowerBound[i] = j;
+     }
+
      const unsigned        noiseID(chcol.size()+1u);
      const unsigned        unprocessedID(chcol.size()+2u);
      unsigned              currentClusterID(0);
@@ -108,7 +127,7 @@ namespace mu2e
        if ( hitToCluster[i] != unprocessedID) continue;
 
        // If the neighborhood is too sparse, assign it to noise
-       nNeighbors = findNeighbors(i, idx, chcol, neighbors);
+       nNeighbors = findNeighbors(i, lowerBound[i], hitCache, neighbors);
        if (nNeighbors < DBSminExpand_) {
          hitToCluster[i] = noiseID;
          continue;
@@ -116,7 +135,7 @@ namespace mu2e
 
        hitToCluster[i] = currentClusterID;
        BkgCluster thisCluster;
-       thisCluster.addHit(idx[i]);
+       thisCluster.addHit(hitCache[i].chIdx);
        // Extend the cluster by adding/expanding around neighbors
        inspect.clear();
        for (const auto& j : neighbors) inspect.push_back(j);
@@ -127,14 +146,14 @@ namespace mu2e
 
          if (hitToCluster[j] == noiseID) {
            hitToCluster[j] = currentClusterID;
-           thisCluster.addHit(idx[j]);
+           thisCluster.addHit(hitCache[j].chIdx);
          }
          if (hitToCluster[j] != unprocessedID) continue;
 
          hitToCluster[j] = currentClusterID;
-         thisCluster.addHit(idx[j]);
+         thisCluster.addHit(hitCache[j].chIdx);
 
-         nNeighbors = findNeighbors(j,idx,chcol,neighbors);
+         nNeighbors = findNeighbors(j, lowerBound[j], hitCache, neighbors);
          if (nNeighbors >= DBSminExpand_){
            for (const auto& k : neighbors) {
              if (hitToCluster[k] == unprocessedID || hitToCluster[k] == noiseID)
@@ -153,37 +172,22 @@ namespace mu2e
 
   //---------------------------------------------------------------------------------------
   // Find the neighbors of given a point - can use any suitable distance function
-  unsigned DBSClusterer::findNeighbors(unsigned ihit, const std::vector<unsigned>& idx, const ComboHitCollection& chcol, std::vector<unsigned>& neighbors)
+  unsigned DBSClusterer::findNeighbors(unsigned ihit, size_t istart, const std::vector<HitData>& hitCache, std::vector<unsigned>& neighbors)
   {
     neighbors.clear();
-    const auto& hit0 = chcol[idx[ihit]];
-    float time0 = hit0.correctedTime();
-    float x0    = hit0.pos().x();
-    float y0    = hit0.pos().y();
-    float z0    = hit0.pos().z();
-    unsigned   nNeighbors = 0;
-    if (hit0.nStrawHits() > 0) nNeighbors = hit0.nStrawHits() - 1;
-    float minTime = time0 - deltaTime_;
-    // Use binary search for O(log N) entry into the time-sorted index vector.
-    // idx[i] contains the hit index; chcol[idx[i]] is sorted by correctedTime.
-    auto it_start = std::partition_point(idx.begin(), idx.end(), [&chcol, minTime](unsigned i){
-      return chcol[i].correctedTime() < minTime;
-    });
-    size_t istart = std::distance(idx.begin(),it_start);
-    for (size_t j = istart; j < idx.size(); ++j){
+    const HitData& h0 = hitCache[ihit];
+    unsigned nNeighbors = (h0.nsh > 0) ? h0.nsh - 1 : 0;
+    for (size_t j = istart; j < hitCache.size(); ++j) {
       if (j == ihit) continue;
-      const auto& hitj = chcol[idx[j]];
-      float dt = hitj.correctedTime() - time0;
+      const HitData& hj = hitCache[j];
+      float dt = hj.time - h0.time;
       if (dt > deltaTime_) break;
-      // Time is constrained by partition_point (backward) and the break (forward)
-      // Now check Spatial constraints
-      if (std::abs(hitj.pos().z() - z0) > deltaZ_) continue;
-      float dx = hitj.pos().x() - x0;
-      float dy = hitj.pos().y() - y0;
-      float distsq = (dx*dx) + (dy*dy);
-      if (distsq <= deltaXY2_){
+      if (std::abs(hj.z - h0.z) > deltaZ_) continue;
+      float dx = hj.x - h0.x;
+      float dy = hj.y - h0.y;
+      if ((dx*dx + dy*dy) <= deltaXY2_) {
         neighbors.emplace_back(j);
-        nNeighbors += hitj.nStrawHits();
+        nNeighbors += hj.nsh;
       }
     }
     return nNeighbors;
