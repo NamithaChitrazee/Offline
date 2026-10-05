@@ -3,6 +3,8 @@
 #include "Offline/TrkHitReco/inc/TrainBkgDiag.hxx"
 
 #include <algorithm>
+#include <cstring>
+#include <cstdint>
 #include <fstream>
 #include <stdexcept>
 #include <vector>
@@ -54,10 +56,37 @@ namespace mu2e
        if (testflag_ && (!chcol[ich].flag().hasAllProperties(sigmask_) || chcol[ich].flag().hasAnyProperty(bkgmask_))) continue;
        idx.emplace_back(ich);
      }
-     // Sort combo hits which are not flagged as background according to their corrected Time
-     std::sort(idx.begin(),idx.end(),[&chcol](auto i, auto j){
-       return chcol[i].correctedTime() < chcol[j].correctedTime();
-     });
+     // Sort combo hits by correctedTime using a 4-pass radix sort - O(N) vs O(N log N).
+     // Adapted from DeltaFinderAlg::orderHits() / countingSortPass() in CalPatRec.
+     // floatToSortableInt maps a float to a uint32_t that preserves sort order:
+     // negative floats have all bits flipped; positive floats have only the sign bit flipped.
+     auto floatToSortableInt = [](float f) -> uint32_t {
+       uint32_t u;
+       memcpy(&u, &f, sizeof(float));
+       if (u & 0x80000000u) u = ~u;
+       else                 u |= 0x80000000u;
+       return u;
+     };
+     std::vector<unsigned> sort_tmp(idx.size());
+     for (int shift = 0; shift < 32; shift += 8) {
+       const bool even = (shift / 8) % 2 == 0;
+       std::vector<unsigned>& v1 = ( even) ? idx      : sort_tmp;
+       std::vector<unsigned>& v2 = (!even) ? idx      : sort_tmp;
+       constexpr int N_BUCKETS = 256;
+       uint32_t count[N_BUCKETS] = {};
+       const size_t n = v1.size();
+       for (size_t i = 0; i < n; i++) {
+         const uint8_t byte = (floatToSortableInt(chcol[v1[i]].correctedTime()) >> shift) & 0xFF;
+         count[byte]++;
+       }
+       for (int i = 1; i < N_BUCKETS; i++) count[i] += count[i-1];
+       for (size_t i = n - 1; ; i--) {
+         const uint8_t byte = (floatToSortableInt(chcol[v1[i]].correctedTime()) >> shift) & 0xFF;
+         v2[count[byte] - 1] = v1[i];
+         count[byte]--;
+         if (i == 0) break; // guard: size_t wraps at 0
+       }
+     }
 
      const unsigned        noiseID(chcol.size()+1u);
      const unsigned        unprocessedID(chcol.size()+2u);
