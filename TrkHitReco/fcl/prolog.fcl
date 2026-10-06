@@ -9,10 +9,10 @@ TrkHitReco :{
 
    DBSClusterer : {
       DBSminExpand    : 1
-      DeltaTime       : 30
+      DeltaTime       : 25
       DeltaZ          : 200
-      DeltaXY         : 100
-      MinClusterHits  : 2
+      DeltaXY         : 75
+      MinClusterHits  : 5
       MinHitsInCluster: 5
       TestFlag        : false
       BackgroundMask  : []

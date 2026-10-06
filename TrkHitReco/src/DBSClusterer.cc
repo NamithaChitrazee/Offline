@@ -162,7 +162,7 @@ namespace mu2e
            }
          }
        }
-       if (thisCluster.hits().size() >= minClusterHits_){
+       if (thisCluster.hits().size() >= minHitsInCluster_){
          clusters.push_back(std::move(thisCluster));
          ++currentClusterID;
        }
@@ -264,7 +264,8 @@ namespace mu2e
     cluster.time(ctime);
     cluster.pos(XYZVectorF(crho*cos(cphi), crho*sin(cphi), cz));
     cluster.edep(cedep);
-
+    //std::cout<<"Number of straw hits in the cluster = "<<nhits<<" combo hits = "<<cluster.hits().size()
+    //         <<" length of the cluster = "<<zmax - zmin <<" rho = "<<cluster.pos().Rho()<<std::endl;
     // Loop 2: MVA input variables that require the cluster centre
     double sqrSumDeltaTime(0.), sqrSumDeltaX(0.), sqrSumDeltaY(0.), sqrSumDeltaPhi(0.);
     float phimin = std::numeric_limits<float>::max();
@@ -297,9 +298,18 @@ namespace mu2e
     kerasvars[4] = std::sqrt((sqrSumDeltaX+sqrSumDeltaY)/nchits);
     kerasvars[5] = std::sqrt(sqrSumDeltaTime/nchits);
     kerasvars[6] = std::sqrt(sqrSumDeltaPhi/nchits);
-    for (int i = 0; i < 7; ++i)
+    /*if(nchits > 0)
+      kerasvars[7] = nhits/nchits;
+    else
+    kerasvars[7] = 1.0;*/
+    //std::cout<<"<TrkHitReco> keras = "<<kerasvars[0]<<" "<<kerasvars[1]<<" "<<kerasvars[2]
+    //        <<" "<<kerasvars[3]<<" "<<kerasvars[4]<<" "<<kerasvars[5]<<" "<<kerasvars[6]<<std::endl;
+      //<<" "<<kerasvars[7]<<std::endl;
+    for (int i = 0; i < 7; ++i){
       kerasvars[i] = (kerasvars[i] - normMeans_[i]) / normSigmas_[i];
+    }
     std::vector<float> kerasout = sofiePtr_->infer(kerasvars.data());
+
     cluster.setKerasQ(kerasout[0]);
   }
 
