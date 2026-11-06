@@ -3,7 +3,6 @@
 
 #include <vector>
 #include <memory>
-#include <utility>
 #include "Offline/RecoDataProducts/inc/CaloCluster.hh"
 #include "Offline/RecoDataProducts/inc/StrawDigi.hh"
 #include "Offline/RecoDataProducts/inc/StrawHit.hh"
@@ -35,10 +34,10 @@ namespace mu2e {
           const CaloClusterCollection *caloClusters,
           double pbtOffset,
           StrawId const& sid, TrkTypes::TDCValues const& tdc, TrkTypes::TOTValues const& tot,
-          double pmp, double pedestal,
+          double pmp,
           TrackerStatus const& trackerStatus, StrawResponse const& srep, Tracker const& tt) const;
 
-      std::pair<double,double> peakMinusPedWF(TrkTypes::ADCWaveform const& adcData, StrawResponse const& srep, ADCWFIter& maxiter) const;
+      double peakMinusPedWF(TrkTypes::ADCWaveform const& adcData, StrawResponse const& srep, ADCWFIter& maxiter) const;
 
     private:
       // algorith parameters

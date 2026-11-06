@@ -64,7 +64,7 @@ namespace mu2e {
     }
   }
 
-  std::pair<double,double> StrawHitRecoUtils::peakMinusPedWF(TrkTypes::ADCWaveform const& adcData, StrawResponse const& srep, ADCWFIter& maxiter) const {
+  double StrawHitRecoUtils::peakMinusPedWF(TrkTypes::ADCWaveform const& adcData, StrawResponse const& srep, ADCWFIter& maxiter) const {
     auto wfstart = adcData.begin() +  srep.nADCPreSamples();
     auto pedestal = std::accumulate(adcData.begin(), wfstart, 0)/static_cast<float>(srep.nADCPreSamples());
     maxiter = wfstart;
@@ -74,16 +74,14 @@ namespace mu2e {
       ++nextIter;
     }
     auto peak = *maxiter;
-    auto pmp = peak - pedestal;
-    auto rv = std::make_pair(pmp, pedestal);
-    return rv;
+    return (peak-pedestal);
   }
 
   bool StrawHitRecoUtils::createComboHit(EventWindowMarker const& ewm, size_t isd, std::unique_ptr<ComboHitCollection> const& chCol,
       std::unique_ptr<StrawHitCollection> const& shCol, const CaloClusterCollection* caloClusters,
       double pbtOffset,
       StrawId const& sid, TrkTypes::TDCValues const& tdc, TrkTypes::TOTValues const& tot,
-      double pmp, double pedestal,
+      double pmp,
       TrackerStatus const& trackerStatus, StrawResponse const& srep, Tracker const& tt) const {
 
     float minT = _minT;
@@ -205,7 +203,7 @@ namespace mu2e {
     chCol->push_back(std::move(ch));
     // optionally create legacy straw hit (for diagnostics and calibration)
     if(_writesh){
-      StrawHit hit(sid,times,tots,energy,pmp,pedestal);
+      StrawHit hit(sid,times,tots,energy);
       shCol->push_back(std::move(hit));
     }
     return true;
