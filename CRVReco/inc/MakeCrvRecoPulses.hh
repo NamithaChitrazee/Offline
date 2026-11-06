@@ -1,9 +1,9 @@
 #ifndef MakeCrvRecoPulses_h
 #define MakeCrvRecoPulses_h
 
+#include <array>
+#include <cstdint>
 #include <vector>
-#include <TF1.h>
-#include <TGraph.h>
 
 namespace mu2eCrv
 {
@@ -29,12 +29,21 @@ class MakeCrvRecoPulses
   const std::vector<bool>   &GetFailedFits() const     {return _failedFits;}
 
   private:
-  MakeCrvRecoPulses();
-  bool FindNextPeak(const TGraph &g, int start, int &peakStart, int &peakEnd, int &fitStart, int &fitEnd);
-  void SubtractPulse(TGraph &g, uint16_t startTDC, float digitizationPeriod);
-  bool FailedFit(TFitResultPtr fr);
+  struct FitResult
+  {
+    std::array<double,3> par;
+    double chi2;
+    bool   converged;
+    bool   hessianOk;
+  };
 
-  TF1    _f1;
+  MakeCrvRecoPulses();
+  bool      FindNextPeak(const std::vector<double> &y, int start, int &peakStart, int &peakEnd,
+                         int &fitStart, int &fitEnd) const;
+  FitResult FitGumbel(const std::vector<double> &t, const std::vector<double> &y,
+                      const std::array<double,3> &p0, const std::array<double,3> &lower,
+                      const std::array<double,3> &upper) const;
+
   float  _minADCdifference;
   float  _defaultBeta;
   float  _minBeta, _maxBeta;
