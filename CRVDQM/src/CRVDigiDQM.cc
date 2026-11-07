@@ -37,7 +37,7 @@ CRVDigiDQM::CRVDigiDQM(const DQMHistSet::Config& hists, int configuration) :
     throw cet::exception("CRVDigiDQM")
         << "configuration " << configuration << " is not a CRVDQMRun1::Configuration\n";
   }
-  nDigisOffline_.assign(CRVDQMRun1::nOfflineChannels(configuration), 0);
+  nDigisOffline_.assign(kNOfflineChannels, 0);
 }
 
 TH2F* CRVDigiDQM::dtPartner(int dtClass) const
@@ -56,7 +56,7 @@ void CRVDigiDQM::book()
   const DQMAxis kGlobalFebEdges = CRVDQMRun1::globalFebEdgesAxis(cfg);
   const DQMAxis kOnlineChannel = CRVDQMRun1::onlineChannelAxis(cfg);
   const DQMAxis kFpgaPair = CRVDQMRun1::fpgaPairAxis(cfg);
-  const DQMAxis kOfflineChannel = CRVDQMRun1::offlineChannelAxis(cfg);
+  const DQMAxis kOfflineChannel = DQMAxis::Counts(0, kNOfflineChannels - 1);
 
   h1_digisPerEvt_ = h.book1<TH1F>("h1_digisPerEvt", "Hits / event;Hits / event;Events",
                                   kDigisPerEvt);
@@ -232,7 +232,7 @@ void CRVDigiDQM::Fill(const CrvDigiCollection& crvDigis, const CrvStatusCollecti
     int offline = -1;
     if (sipm >= 0 && barIndex >= 0) {
       offline = barIndex * static_cast<int>(CRVId::nChanPerBar) + sipm;
-      if (CRVDQMRun1::offlineChannelInConfiguration(bookedConfiguration_, offline)) {
+      if (offline >= 0 && offline < kNOfflineChannels) {
         ++nDigisOffline_[offline];
         h_crvDigisPerChannel_.Fill(offline);
       } else {
@@ -240,7 +240,7 @@ void CRVDigiDQM::Fill(const CrvDigiCollection& crvDigis, const CrvStatusCollecti
                      Form("a digi's offline channel is outside the %d channels of the %s "
                           "configuration this client was booked for; it is left out of "
                           "crvDigisPerChannel and the per-sector occupancy.",
-                          CRVDQMRun1::nOfflineChannels(bookedConfiguration_),
+                          kNOfflineChannels,
                           configurationName(bookedConfiguration_)));
       }
     }
