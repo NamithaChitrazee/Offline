@@ -49,7 +49,6 @@ CosmicReco : { @table::CosmicReco
       HitNonNoiseSelectionBits : []
       debugLevel : 0
       minNStrawHits : 2
-      minNGoodStrawHits : 0
       minNPanels : 1
       TimeWindow : 100
       useTimeWindow : false
